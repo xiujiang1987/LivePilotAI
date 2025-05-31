@@ -1,0 +1,43 @@
+environment: development
+debug: true
+secret_key: dev-secret-key-change-in-production
+
+database:
+  host: localhost
+  port: 5432
+  database: livepilotai_dev
+  username: postgres
+  password: ""
+  max_connections: 10
+
+ai_models:
+  emotion_model_path: "models/emotion_detection.h5"
+  face_cascade_path: "models/haarcascade_frontalface_default.xml"
+  confidence_threshold: 0.7
+  input_size: [48, 48]
+  batch_size: 16
+
+obs:
+  websocket_host: localhost
+  websocket_port: 4455
+  websocket_password: ""
+  auto_connect: true
+  reconnect_attempts: 5
+  timeout: 10
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  debug: true
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:3001"
+  rate_limit: 100
+
+logging:
+  level: DEBUG
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/livepilotai_dev.log"
+  max_file_size: 10485760  # 10MB
+  backup_count: 5
+  console_output: true

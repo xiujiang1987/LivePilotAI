@@ -1,274 +1,240 @@
-# LivePilotAI Development Environment Setup Script
+# LivePilotAI 開發環境設置腳本
+# 版本: 1.0
+# 日期: 2025-05-31
 
-param(
-    [switch]$SkipOBSCheck = $false
-)
+Write-Host "🚀 LivePilotAI 開發環境設置開始..." -ForegroundColor Green
+Write-Host "============================================" -ForegroundColor Cyan
 
-Write-Host "==========================================="
-Write-Host "      LivePilotAI Development Setup       "
-Write-Host "==========================================="
+# 檢查當前目錄
+$currentDir = Get-Location
+Write-Host "📂 當前工作目錄: $currentDir" -ForegroundColor Yellow
 
-# Check if running from project root
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectRoot = Split-Path -Parent $scriptPath
-
-if (-not (Test-Path "$projectRoot\README.md")) {
-    Write-Error "Error: Please run this script from LivePilotAI project root directory"
-    exit 1
-}
-
-Set-Location $projectRoot
-Write-Host "Project Directory: $projectRoot"
-
-# Step 1: Check Python version
-Write-Host "`n1. Checking Python installation..."
+# 檢查Python是否安裝
+Write-Host "🐍 檢查Python環境..." -ForegroundColor Yellow
 try {
-    $pythonVersion = python --version 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Python not installed"
+    $pythonVersion = python --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✅ 檢測到Python版本: $pythonVersion" -ForegroundColor Green
+    } else {
+        throw "Python未安裝"
     }
-    
-    Write-Host "Found Python version: $pythonVersion"
 } catch {
-    Write-Error "Python is not installed or not available. Please install Python 3.9+ and add to PATH"
+    Write-Error "❌ Python未安裝或不在PATH中，請先安裝Python 3.9+"
+    Write-Host "下載連結: https://www.python.org/downloads/" -ForegroundColor Cyan
     exit 1
 }
 
-# Step 2: Create virtual environment
-Write-Host "`n2. Creating Python virtual environment..."
-$venvPath = "$projectRoot\envs\dev"
+# 檢查Python版本是否符合要求
+$versionString = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+$version = [version]$versionString
+$minVersion = [version]"3.9"
 
-if (Test-Path $venvPath) {
-    Write-Host "Virtual environment exists, removing old version..."
-    Remove-Item -Recurse -Force $venvPath
-}
-
-python -m venv $venvPath
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to create virtual environment"
+if ($version -lt $minVersion) {
+    Write-Error "❌ Python版本太舊，需要3.9+，當前版本: $versionString"
     exit 1
 }
 
-Write-Host "Virtual environment created successfully: $venvPath"
-
-# Step 3: Activate virtual environment and install dependencies
-Write-Host "`n3. Activating virtual environment and installing dependencies..."
-$activateScript = "$venvPath\Scripts\Activate.ps1"
-
-if (-not (Test-Path $activateScript)) {
-    Write-Error "Cannot find virtual environment activation script"
-    exit 1
+# 創建虛擬環境
+Write-Host "🔧 設置Python虛擬環境..." -ForegroundColor Yellow
+if (!(Test-Path "venv")) {
+    Write-Host "創建新的虛擬環境..." -ForegroundColor Cyan
+    python -m venv venv
+    Write-Host "✅ 虛擬環境創建成功" -ForegroundColor Green
+} else {
+    Write-Host "✅ 虛擬環境已存在" -ForegroundColor Green
 }
 
-# Activate virtual environment
-& $activateScript
+# 啟動虛擬環境
+Write-Host "🔄 啟動虛擬環境..." -ForegroundColor Yellow
+& "venv\Scripts\Activate.ps1"
 
-# Upgrade pip
-Write-Host "Upgrading pip..."
+# 升級pip
+Write-Host "📦 升級pip到最新版本..." -ForegroundColor Yellow
 python -m pip install --upgrade pip
 
-# Install production dependencies
-if (Test-Path "$projectRoot\requirements.txt") {
-    Write-Host "Installing production dependencies..."
+# 安裝基礎開發依賴
+Write-Host "📦 安裝生產依賴..." -ForegroundColor Yellow
+if (Test-Path "requirements.txt") {
     pip install -r requirements.txt
+    Write-Host "✅ 生產依賴安裝完成" -ForegroundColor Green
 } else {
-    Write-Host "requirements.txt not found, skipping production dependencies"
+    Write-Warning "⚠️  requirements.txt不存在，跳過生產依賴安裝"
 }
 
-# Install development dependencies
-Write-Host "Installing development dependencies..."
-$devDeps = @(
-    "black>=23.0.0",
-    "pylint>=2.17.0", 
-    "mypy>=1.3.0",
-    "pytest>=7.3.0",
-    "pytest-cov>=4.1.0",
-    "pytest-asyncio>=0.21.0",
-    "pre-commit>=3.3.0",
-    "flake8>=6.0.0",
-    "isort>=5.12.0"
-)
+# 創建開發依賴文件
+Write-Host "📦 創建並安裝開發依賴..." -ForegroundColor Yellow
+$devRequirements = @"
+# 代碼品質工具
+black==23.7.0
+isort==5.12.0
+pylint==2.17.5
+mypy==1.5.1
+flake8==6.0.0
 
-foreach ($package in $devDeps) {
-    pip install $package
+# 測試工具
+pytest==7.4.0
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+pytest-asyncio==0.21.1
+
+# 開發工具
+pre-commit==3.3.3
+python-dotenv==1.0.0
+
+# 文檔工具
+sphinx==7.1.2
+sphinx-rtd-theme==1.3.0
+"@
+
+$devRequirements | Out-File -FilePath "requirements-dev.txt" -Encoding UTF8
+pip install -r requirements-dev.txt
+Write-Host "✅ 開發依賴安裝完成" -ForegroundColor Green
+
+# 設定pre-commit hooks
+Write-Host "🔗 設置pre-commit hooks..." -ForegroundColor Yellow
+if (Test-Path ".pre-commit-config.yaml") {
+    pre-commit install
+    Write-Host "✅ Pre-commit hooks設置完成" -ForegroundColor Green
+} else {
+    Write-Warning "⚠️  .pre-commit-config.yaml不存在，跳過pre-commit設置"
 }
 
-Write-Host "Dependencies installation completed"
+# 創建環境配置文件
+Write-Host "⚙️  創建環境配置文件..." -ForegroundColor Yellow
 
-# Step 4: Create configuration files
-Write-Host "`n4. Creating configuration files..."
-
-# Create .env file
-$envContent = @"
-# LivePilotAI Environment Configuration
+# 創建.env文件
+if (!(Test-Path ".env")) {
+    $envContent = @"
+# LivePilotAI 環境配置
 ENVIRONMENT=development
-DEBUG=true
-LOG_LEVEL=DEBUG
-
-# API Configuration
+LOG_LEVEL=INFO
 API_HOST=localhost
 API_PORT=8000
-WEBSOCKET_PORT=8001
 
-# OBS Configuration
-OBS_WEBSOCKET_HOST=localhost
-OBS_WEBSOCKET_PORT=4455
-OBS_WEBSOCKET_PASSWORD=
+# OBS配置
+OBS_HOST=localhost
+OBS_PORT=4444
+OBS_PASSWORD=
 
-# AI Model Configuration
-EMOTION_MODEL_PATH=assets/models/emotion_detection.h5
-FACE_CASCADE_PATH=assets/models/haarcascade_frontalface_default.xml
+# AI引擎配置
+EMOTION_MODEL_PATH=models/emotion_model.h5
+CONFIDENCE_THRESHOLD=0.7
+PROCESSING_FPS=30
 
-# Database Configuration
-DATABASE_URL=sqlite:///data/livepilot.db
+# 資料庫配置
+DATABASE_PATH=data/livepilot.db
 
-# Logging Configuration
-LOG_FILE=logs/livepilot.log
-LOG_MAX_SIZE=10485760
-LOG_BACKUP_COUNT=5
+# 安全設置
+SECRET_KEY=your-secret-key-here
 "@
-
-Set-Content -Path "$projectRoot\.env" -Value $envContent -Encoding UTF8
-Write-Host ".env file created"
-
-# Create pyproject.toml
-$pyprojectContent = @"
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "livepilot-ai"
-version = "0.1.0"
-description = "AI-powered real-time emotion detection and live streaming effects system"
-authors = [{name = "LivePilotAI Team"}]
-license = {text = "MIT"}
-readme = "README.md"
-requires-python = ">=3.9"
-
-[tool.black]
-line-length = 88
-target-version = ['py39']
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q --cov=src --cov-report=html --cov-report=term-missing"
-testpaths = ["tests"]
-"@
-
-Set-Content -Path "$projectRoot\pyproject.toml" -Value $pyprojectContent -Encoding UTF8
-Write-Host "pyproject.toml file created"
-
-# Step 5: Initialize Git repository if not exists
-Write-Host "`n5. Checking Git repository..."
-
-if (-not (Test-Path "$projectRoot\.git")) {
-    Write-Host "Initializing Git repository..."
-    git init
-    
-    # Create .gitignore
-    $gitignoreContent = @"
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-envs/
-venv/
-ENV/
-env/
-.venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-logs/
-*.log
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Coverage reports
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Models and large files
-assets/models/*.h5
-assets/models/*.pb
-assets/models/*.onnx
-
-# Temporary files
-temp/
-tmp/
-*.tmp
-"@
-
-    Set-Content -Path "$projectRoot\.gitignore" -Value $gitignoreContent -Encoding UTF8
-    
-    Write-Host "Git repository initialized"
-} else {
-    Write-Host "Git repository already exists"
+    $envContent | Out-File -FilePath ".env" -Encoding UTF8
+    Write-Host "✅ .env文件創建完成" -ForegroundColor Green
 }
 
-# Complete
-Write-Host "`n==========================================="
-Write-Host "      Development Environment Ready!      "
-Write-Host "==========================================="
+# 創建必要的目錄結構
+Write-Host "📁 創建必要的目錄..." -ForegroundColor Yellow
+$directories = @(
+    "data",
+    "logs", 
+    "models",
+    "temp",
+    "assets/effects",
+    "assets/audio",
+    "assets/icons",
+    "config/dev",
+    "config/prod",
+    "config/test"
+)
 
-Write-Host "`nNext Steps:"
-Write-Host "1. Begin Phase 1 development work"
-Write-Host "2. Initialize core architecture"
-Write-Host "3. Implement AI engine foundation"
+foreach ($dir in $directories) {
+    if (!(Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Write-Host "📁 創建目錄: $dir" -ForegroundColor Cyan
+    }
+}
 
-Write-Host "`nDevelopment Environment Info:"
-Write-Host "- Virtual environment: envs\dev"
-Write-Host "- Configuration file: .env"
-Write-Host "- Log directory: logs\"
+# 檢查Git是否初始化
+Write-Host "📚 檢查Git倉庫..." -ForegroundColor Yellow
+if (!(Test-Path ".git")) {
+    Write-Host "初始化Git倉庫..." -ForegroundColor Cyan
+    git init
+    git add .
+    git commit -m "feat: initial project setup with development environment"
+    Write-Host "✅ Git倉庫初始化完成" -ForegroundColor Green
+} else {
+    Write-Host "✅ Git倉庫已存在" -ForegroundColor Green
+}
 
-Write-Host "`nHappy coding! 🚀"
+# 檢查OBS Studio是否安裝
+Write-Host "🎥 檢查OBS Studio..." -ForegroundColor Yellow
+$obsInstalled = $false
+$possibleObsPaths = @(
+    "${env:ProgramFiles}\obs-studio\bin\64bit\obs64.exe",
+    "${env:ProgramFiles(x86)}\obs-studio\bin\64bit\obs64.exe",
+    "${env:LOCALAPPDATA}\Programs\obs-studio\bin\64bit\obs64.exe"
+)
+
+foreach ($path in $possibleObsPaths) {
+    if (Test-Path $path) {
+        Write-Host "✅ 檢測到OBS Studio: $path" -ForegroundColor Green
+        $obsInstalled = $true
+        break
+    }
+}
+
+if (!$obsInstalled) {
+    Write-Warning "⚠️  未檢測到OBS Studio，請從以下連結下載安裝："
+    Write-Host "https://obsproject.com/download" -ForegroundColor Cyan
+}
+
+# 創建啟動腳本
+Write-Host "🚀 創建快速啟動腳本..." -ForegroundColor Yellow
+$startScript = @"
+# LivePilotAI 快速啟動腳本
+Write-Host "🚀 啟動LivePilotAI開發環境..." -ForegroundColor Green
+
+# 啟動虛擬環境
+& "venv\Scripts\Activate.ps1"
+
+# 設置環境變數
+if (Test-Path ".env") {
+    Get-Content ".env" | ForEach-Object {
+        if ($_ -match "^([^#][^=]+)=(.*)$") {
+            [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+        }
+    }
+}
+
+Write-Host "✅ 開發環境已啟動" -ForegroundColor Green
+Write-Host "💡 可用命令:" -ForegroundColor Cyan
+Write-Host "  python -m src.main          # 啟動應用" -ForegroundColor White
+Write-Host "  pytest                      # 運行測試" -ForegroundColor White
+Write-Host "  python scripts/dev_check.py # 開發環境檢查" -ForegroundColor White
+"@
+
+$startScript | Out-File -FilePath "start_dev.ps1" -Encoding UTF8
+
+# 設置完成報告
+Write-Host ""
+Write-Host "🎉 開發環境設置完成！" -ForegroundColor Green
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "📋 設置摘要:" -ForegroundColor Yellow
+Write-Host "  ✅ Python虛擬環境" -ForegroundColor White
+Write-Host "  ✅ 開發依賴安裝" -ForegroundColor White
+Write-Host "  ✅ 代碼品質工具" -ForegroundColor White
+Write-Host "  ✅ 目錄結構創建" -ForegroundColor White
+Write-Host "  ✅ 環境配置文件" -ForegroundColor White
+Write-Host "  ✅ Git倉庫初始化" -ForegroundColor White
+
+Write-Host ""
+Write-Host "🚀 下一步:" -ForegroundColor Yellow
+Write-Host "  1. 使用 './start_dev.ps1' 啟動開發環境" -ForegroundColor White
+Write-Host "  2. 運行 'python scripts/dev_check.py' 檢查環境" -ForegroundColor White
+Write-Host "  3. 開始開發核心AI引擎模組" -ForegroundColor White
+
+Write-Host ""
+Write-Host "📚 有用的命令:" -ForegroundColor Yellow
+Write-Host "  pytest --cov=src            # 運行測試並查看覆蓋率" -ForegroundColor White
+Write-Host "  black src tests             # 格式化代碼" -ForegroundColor White
+Write-Host "  pylint src                  # 檢查代碼品質" -ForegroundColor White
+Write-Host "  mypy src                    # 類型檢查" -ForegroundColor White

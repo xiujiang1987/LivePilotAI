@@ -1,0 +1,42 @@
+environment: testing
+debug: true
+secret_key: testing-secret-key
+
+database:
+  host: localhost
+  port: 5432
+  database: livepilotai_test
+  username: test_user
+  password: test_pass
+  max_connections: 5
+
+ai_models:
+  emotion_model_path: "tests/fixtures/mock_model.h5"
+  face_cascade_path: "tests/fixtures/mock_cascade.xml"
+  confidence_threshold: 0.8
+  input_size: [48, 48]
+  batch_size: 8
+
+obs:
+  websocket_host: localhost
+  websocket_port: 4456
+  websocket_password: "test_password"
+  auto_connect: false
+  reconnect_attempts: 3
+  timeout: 5
+
+api:
+  host: "127.0.0.1"
+  port: 8001
+  debug: true
+  cors_origins:
+    - "http://localhost:3000"
+  rate_limit: 1000
+
+logging:
+  level: DEBUG
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/test.log"
+  max_file_size: 1048576  # 1MB
+  backup_count: 2
+  console_output: false
