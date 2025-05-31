@@ -23,7 +23,7 @@ cd "D:\AI_Park\Workspace\dev_projects\ai\LivePilotAI"
 git remote add origin https://github.com/YOUR_USERNAME/LivePilotAI.git
 
 # 推送程式碼到遠端倉庫
-git push -u origin master
+git push -u origin main
 ```
 
 ## 步驟 3: 驗證推送成功
