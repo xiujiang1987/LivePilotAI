@@ -1,23 +1,50 @@
-# LivePilotAI - AI智慧直播特效系統
+# LivePilotAI - AI智慧導播暨個人化直播助理平台
 
 ## 📋 專案概述
 
-LivePilotAI 是一個基於人工智能的即時情緒檢測與直播特效系統，能夠即時分析主播情緒並自動觸發相應的視覺特效，提升直播互動體驗。
+LivePilotAI 是一個基於人工智能的智慧導播系統，能夠即時分析主播情緒並自動執行場景切換、特效觸發等導播操作，打造個人化的智慧直播助理平台。
 
 ## 🎯 核心功能
 
+### Day 4 完成功能 ✅
 - **即時情緒檢測**: 使用深度學習模型分析人臉情緒（7種情緒分類）
-- **動態視覺特效**: 基於情緒狀態自動觸發對應特效
-- **OBS直播整合**: 無縫整合OBS Studio，支援即時直播
-- **多人檢測**: 同時檢測多個人臉的情緒狀態
-- **自訂配置**: 支援特效強度、觸發條件等個人化設定
+- **多人臉檢測**: 同時檢測多個人臉的情緒狀態
+- **即時影像處理**: 高效能的攝影機管理和影像處理
+- **模組化AI引擎**: 可擴展的情緒檢測架構
+
+### Day 5 新增功能 ✅
+- **OBS Studio 智慧整合**: 完整的 WebSocket 連接和場景控制
+- **智慧場景切換**: 基於情緒檢測的自動場景切換系統
+- **進階情緒映射**: 可學習和適應的情緒-場景映射引擎
+- **專業級使用者介面**: 完整的控制面板、預覽視窗和設定介面
+- **即時狀態監控**: 綜合的系統健康和性能監控
+- **自訂配置**: 支援完整的個人化設定和偏好儲存
 
 ## 🏗️ 技術架構
 
 ```
-Frontend (React) ←→ Backend API (FastAPI) ←→ AI Engine (TensorFlow)
-                                    ↕
-                              OBS Integration
+Day 5 完整架構:
+┌─────────────────────────────────────────────────────────────┐
+│                    LivePilotAI 智慧導播平台                   │
+├─────────────────────────────────────────────────────────────┤
+│  UI Layer (tkinter)                                        │
+│  ├── Main Control Panel    ├── Preview Window             │
+│  ├── Settings Dialog       └── Status Indicators          │
+├─────────────────────────────────────────────────────────────┤
+│  OBS Integration Layer                                     │
+│  ├── OBS Manager          ├── Scene Controller            │
+│  ├── Emotion Mapper       └── WebSocket Client            │
+├─────────────────────────────────────────────────────────────┤
+│  AI Engine Layer (Day 4)                                  │
+│  ├── Emotion Detector     ├── Face Detector               │
+│  ├── Camera Manager       └── Real-time Processor         │
+├─────────────────────────────────────────────────────────────┤
+│  Core Infrastructure                                      │
+│  ├── Configuration        ├── Logging System              │
+│  └── Performance Monitor  └── Error Handling              │
+└─────────────────────────────────────────────────────────────┘
+          ↕                    ↕                    ↕
+    OBS Studio        Camera/Webcam        Display Output
 ```
 
 ## 📁 專案結構
@@ -25,12 +52,30 @@ Frontend (React) ←→ Backend API (FastAPI) ←→ AI Engine (TensorFlow)
 ```
 LivePilotAI/
 ├── src/                    # 源代碼
-│   ├── ai_engine/         # AI核心引擎
-│   ├── api/               # 後端API
-│   ├── frontend/          # 前端介面
-│   ├── obs_integration/   # OBS整合
-│   ├── effects/           # 特效系統
+│   ├── ai_engine/         # AI核心引擎 (Day 4)
+│   │   ├── emotion_detector.py
+│   │   └── modules/
+│   │       ├── face_detector.py
+│   │       ├── camera_manager.py
+│   │       └── real_time_detector.py
+│   ├── obs_integration/   # OBS整合系統 (Day 5)
+│   │   ├── obs_manager.py
+│   │   ├── scene_controller.py
+│   │   ├── emotion_mapper.py
+│   │   └── websocket_client.py
+│   ├── ui/                # 使用者介面 (Day 5)
+│   │   ├── main_panel.py
+│   │   ├── preview_window.py
+│   │   ├── settings_dialog.py
+│   │   └── status_indicators.py
+│   ├── api/               # 後端API (預留)
+│   ├── frontend/          # 前端介面 (預留)
+│   ├── effects/           # 特效系統 (預留)
+│   ├── core/              # 核心系統
 │   └── utils/             # 工具函數
+├── main_day5.py           # Day 5 主應用程式
+├── day5_integration_test.py    # Day 5 整合測試
+├── day5_performance_benchmark.py # 性能基準測試
 ├── tests/                 # 測試代碼
 ├── docs/                  # 技術文檔
 ├── config/                # 配置文件

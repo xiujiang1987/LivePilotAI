@@ -146,8 +146,7 @@ class EmotionDetector:
         try:
             predictions = self.model.predict(face_tensor, verbose=0)
             emotion_probs = predictions[0]
-            
-            # 建立情緒-置信度字典
+              # 建立情緒-置信度字典
             emotion_dict = {
                 emotion: float(prob) 
                 for emotion, prob in zip(self.emotion_labels, emotion_probs)
@@ -160,6 +159,46 @@ class EmotionDetector:
             # 返回中性情緒作為預設值
             return {emotion: 0.0 for emotion in self.emotion_labels}
     
+    def predict_emotion_from_image(self, face_image: np.ndarray):
+        """
+        從人臉圖像直接預測情緒
+        
+        Args:
+            face_image: 人臉區域圖像 (BGR格式)
+            
+        Returns:
+            包含主要情緒、置信度和所有情緒分佈的字典
+        """
+        try:
+            # 預處理人臉圖像
+            face_tensor = self.preprocess_face(face_image)
+            
+            # 預測情緒
+            emotion_probs = self.predict_emotion(face_tensor)
+            
+            # 找出主要情緒
+            dominant_emotion = ""
+            max_confidence = 0.0
+            for emotion, confidence in emotion_probs.items():
+                if confidence > max_confidence:
+                    max_confidence = confidence
+                    dominant_emotion = emotion
+            
+            # 返回完整結果
+            return {
+                'dominant_emotion': dominant_emotion,
+                'confidence': max_confidence,
+                'emotions': emotion_probs
+            }
+            
+        except Exception as e:
+            logger.error(f"情緒預測失敗: {e}")
+            return {
+                'dominant_emotion': 'Neutral',
+                'confidence': 0.0,
+                'emotions': {emotion: 0.0 for emotion in self.emotion_labels}
+            }
+
     def smooth_emotion(self, current_emotion: Dict[str, float]) -> Dict[str, float]:
         """
         使用歷史記錄平滑情緒預測結果
