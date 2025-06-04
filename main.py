@@ -8,6 +8,7 @@ from tkinter import ttk, messagebox
 import sys
 import os
 import json
+import time
 import logging
 import threading
 import asyncio
@@ -29,15 +30,15 @@ logger = logging.getLogger(__name__)
 src_path = Path(__file__).parent / 'src'
 sys.path.insert(0, str(src_path))
 
-try:
-    # Import UI components
+try:    # Import UI components
     from src.ui import (
         MainControlPanel, PreviewWindow, show_settings_dialog,
         SystemStatusManager, create_obs_status_panel, 
         create_ai_status_panel, create_system_status_panel,
         StatusLevel
     )
-      # Import OBS integration
+    
+    # Import OBS integration
     from src.obs_integration.obs_manager import OBSManager
     from src.obs_integration.scene_controller import SceneController
     from src.obs_integration.emotion_mapper import EmotionMapper
@@ -267,10 +268,16 @@ class LivePilotAIApp:
         main_container.columnconfigure(0, weight=3)
         main_container.columnconfigure(1, weight=1)
         main_container.rowconfigure(0, weight=1)
-        
-        # Create main control panel
-        self.main_panel = MainControlPanel(main_container, self.settings)
-        self.main_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+          # Create main control panel
+        from src.ui.main_panel import PanelConfig
+        panel_config = PanelConfig(
+            window_title="LivePilotAI - Intelligent Streaming Director",
+            window_size=self.settings['app']['window_size'],
+            auto_start_camera=self.settings['app']['auto_start_camera'],
+            auto_connect_obs=self.settings['app']['auto_connect_obs']
+        )
+        self.main_panel = MainControlPanel(panel_config)
+        # Note: MainPanel creates its own root window, so we don't grid it here
         
         # Create status panel container
         status_container = ttk.Frame(main_container)
@@ -332,13 +339,14 @@ class LivePilotAIApp:
             self.status_manager.update_component_status(
                 'ai_engine', 'processing', StatusLevel.OFFLINE, "Real-time processor ready"
             )
-            
-            # Initialize OBS components
-            self.obs_manager = OBSManager(
+              # Initialize OBS components
+            from src.obs_integration.obs_manager import OBSConfig
+            obs_config = OBSConfig(
                 host=self.settings['obs']['host'],
                 port=self.settings['obs']['port'],
                 password=self.settings['obs']['password']
             )
+            self.obs_manager = OBSManager(obs_config)
             self.status_manager.update_component_status(
                 'obs', 'connection', StatusLevel.OFFLINE, "OBS manager initialized"
             )
@@ -350,7 +358,7 @@ class LivePilotAIApp:
             )
             
             # Initialize scene controller
-            self.scene_controller = SceneController(self.obs_manager, self.emotion_mapper)
+            self.scene_controller = SceneController(self.obs_manager)
             
             logger.info("All components initialized successfully")
             

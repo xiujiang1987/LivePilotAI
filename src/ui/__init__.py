@@ -3,7 +3,7 @@ LivePilotAI UI Module
 Provides graphical user interface components for the LivePilotAI system.
 """
 
-from .main_panel import MainControlPanel
+from .main_panel import MainPanel as MainControlPanel
 from .preview_window import PreviewWindow
 from .settings_dialog import SettingsDialog, show_settings_dialog
 from .status_indicators import (

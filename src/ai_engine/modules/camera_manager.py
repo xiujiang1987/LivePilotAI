@@ -95,6 +95,14 @@ class CameraManager:
             self.is_initialized = False
             return False
     
+    def start_camera(self) -> bool:
+        """啟動攝像頭 - 為兼容性提供"""
+        return self.start_real_time_capture()
+    
+    def stop_camera(self):
+        """停止攝像頭 - 為兼容性提供"""
+        self.stop_real_time_capture()
+    
     def start_real_time_capture(self, callback: Optional[Callable] = None) -> bool:
         """
         啟動即時捕獲模式

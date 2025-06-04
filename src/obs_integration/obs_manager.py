@@ -382,7 +382,10 @@ class OBSWebSocketManager:
         return stats
 
 
-# 便捷函數
+# 便捷函數和別名
+# 為兼容性提供 OBSManager 別名
+OBSManager = OBSWebSocketManager
+
 async def create_obs_connection(host: str = "localhost", port: int = 4455, password: str = "") -> OBSWebSocketManager:
     """
     創建並連接 OBS WebSocket 管理器
