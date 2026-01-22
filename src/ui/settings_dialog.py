@@ -10,6 +10,7 @@ import os
 from typing import Dict, Any, Optional, Callable
 import threading
 import logging
+from ..utils.i18n import i18n
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -112,7 +113,7 @@ class SettingsDialog:
     def show(self):
         """Display the settings dialog"""
         self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title("LivePilotAI Settings")
+        self.dialog.title(i18n.get("settings_title"))
         self.dialog.geometry("800x600")
         self.dialog.resizable(True, True)
         
@@ -184,160 +185,164 @@ class SettingsDialog:
         button_frame.columnconfigure(0, weight=1)
         
         # Buttons
-        ttk.Button(button_frame, text="Load Profile", 
+        ttk.Button(button_frame, text=i18n.get("load_profile"), 
                   command=self._load_profile).grid(row=0, column=0, padx=(0, 5), sticky=tk.W)
-        ttk.Button(button_frame, text="Save Profile", 
+        ttk.Button(button_frame, text=i18n.get("save_profile"), 
                   command=self._save_profile).grid(row=0, column=1, padx=5, sticky=tk.W)
-        ttk.Button(button_frame, text="Reset to Defaults", 
+        ttk.Button(button_frame, text=i18n.get("reset_defaults"), 
                   command=self._reset_defaults).grid(row=0, column=2, padx=5, sticky=tk.W)
         
-        ttk.Button(button_frame, text="Cancel", 
+        ttk.Button(button_frame, text=i18n.get("cancel"), 
                   command=self._on_cancel).grid(row=0, column=3, padx=(5, 0), sticky=tk.E)
-        ttk.Button(button_frame, text="OK", 
+        ttk.Button(button_frame, text=i18n.get("confirm"), 
                   command=self._on_ok).grid(row=0, column=4, padx=(5, 0), sticky=tk.E)
     
     def _create_obs_tab(self, notebook):
         """Create OBS settings tab"""
         frame = ttk.Frame(notebook, padding="10")
-        notebook.add(frame, text="OBS Connection")
+        notebook.add(frame, text=i18n.get("tab_obs"))
         
         # Connection settings
-        conn_group = ttk.LabelFrame(frame, text="Connection Settings", padding="10")
+        conn_group = ttk.LabelFrame(frame, text=i18n.get("group_connection"), padding="10")
         conn_group.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
         conn_group.columnconfigure(1, weight=1)
         
-        ttk.Label(conn_group, text="Host:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(conn_group, text=i18n.get("host") + ":").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.widgets['obs_host'] = ttk.Entry(conn_group)
         self.widgets['obs_host'].grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(conn_group, text="Port:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(conn_group, text=i18n.get("port") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['obs_port'] = ttk.Spinbox(conn_group, from_=1, to=65535, width=10)
         self.widgets['obs_port'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(conn_group, text="Password:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(conn_group, text=i18n.get("password") + ":").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.widgets['obs_password'] = ttk.Entry(conn_group, show="*")
         self.widgets['obs_password'].grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
         self.widgets['obs_auto_connect'] = tk.BooleanVar()
-        ttk.Checkbutton(conn_group, text="Auto-connect on startup", 
+        ttk.Checkbutton(conn_group, text=i18n.get("auto_connect"), 
                        variable=self.widgets['obs_auto_connect']).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=5)
         
         # Advanced settings
-        adv_group = ttk.LabelFrame(frame, text="Advanced Settings", padding="10")
+        adv_group = ttk.LabelFrame(frame, text=i18n.get("group_advanced"), padding="10")
         adv_group.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         adv_group.columnconfigure(1, weight=1)
         
-        ttk.Label(adv_group, text="Reconnect Interval (s):").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(adv_group, text=i18n.get("reconnect_interval") + ":").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.widgets['obs_reconnect_interval'] = ttk.Spinbox(adv_group, from_=1, to=60, width=10)
         self.widgets['obs_reconnect_interval'].grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(adv_group, text="Timeout (s):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(adv_group, text=i18n.get("timeout") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['obs_timeout'] = ttk.Spinbox(adv_group, from_=1, to=30, width=10)
         self.widgets['obs_timeout'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
         # Test connection button
-        ttk.Button(frame, text="Test Connection", 
+        ttk.Button(frame, text=i18n.get("test_connection"), 
                   command=self._test_obs_connection).grid(row=2, column=0, pady=10)
     
     def _create_emotion_tab(self, notebook):
         """Create emotion detection settings tab"""
         frame = ttk.Frame(notebook, padding="10")
-        notebook.add(frame, text="Emotion Detection")
+        notebook.add(frame, text=i18n.get("tab_emotion"))
         
         # Detection settings
-        det_group = ttk.LabelFrame(frame, text="Detection Parameters", padding="10")
+        det_group = ttk.LabelFrame(frame, text=i18n.get("group_detection"), padding="10")
         det_group.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
         det_group.columnconfigure(1, weight=1)
         
-        ttk.Label(det_group, text="Confidence Threshold:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(det_group, text=i18n.get("confidence_threshold") + ":").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.widgets['emotion_confidence_threshold'] = ttk.Scale(det_group, from_=0.1, to=1.0, orient=tk.HORIZONTAL)
         self.widgets['emotion_confidence_threshold'].grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(det_group, text="Update Interval (ms):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(det_group, text=i18n.get("update_interval") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['emotion_update_interval'] = ttk.Spinbox(det_group, from_=50, to=1000, increment=50, width=10)
         self.widgets['emotion_update_interval'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(det_group, text="Smoothing Factor:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(det_group, text=i18n.get("smoothing") + ":").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.widgets['emotion_smoothing_factor'] = ttk.Scale(det_group, from_=0.0, to=1.0, orient=tk.HORIZONTAL)
         self.widgets['emotion_smoothing_factor'].grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(det_group, text="Min Face Size (px):").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(det_group, text=i18n.get("min_face_size") + ":").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.widgets['emotion_min_face_size'] = ttk.Spinbox(det_group, from_=10, to=200, width=10)
         self.widgets['emotion_min_face_size'].grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(det_group, text="Max Faces:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(det_group, text=i18n.get("max_faces") + ":").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.widgets['emotion_max_faces'] = ttk.Spinbox(det_group, from_=1, to=10, width=10)
         self.widgets['emotion_max_faces'].grid(row=4, column=1, sticky=tk.W, padx=(5, 0), pady=2)
     
     def _create_scene_tab(self, notebook):
         """Create scene switching settings tab"""
         frame = ttk.Frame(notebook, padding="10")
-        notebook.add(frame, text="Scene Switching")
+        notebook.add(frame, text=i18n.get("tab_scene"))
         
         # Auto-switching settings
-        auto_group = ttk.LabelFrame(frame, text="Auto-Switching", padding="10")
+        auto_group = ttk.LabelFrame(frame, text=i18n.get("group_auto_switch"), padding="10")
         auto_group.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
         auto_group.columnconfigure(1, weight=1)
         
         self.widgets['scene_enable_auto_switch'] = tk.BooleanVar()
-        ttk.Checkbutton(auto_group, text="Enable automatic scene switching", 
+        ttk.Checkbutton(auto_group, text=i18n.get("enable_auto"), 
                        variable=self.widgets['scene_enable_auto_switch']).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=5)
         
-        ttk.Label(auto_group, text="Switch Cooldown (s):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(auto_group, text=i18n.get("switch_cooldown") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['scene_switch_cooldown'] = ttk.Scale(auto_group, from_=0.5, to=10.0, orient=tk.HORIZONTAL)
         self.widgets['scene_switch_cooldown'].grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(auto_group, text="Transition Duration (ms):").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(auto_group, text=i18n.get("transition_duration") + ":").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.widgets['scene_transition_duration'] = ttk.Spinbox(auto_group, from_=100, to=5000, increment=100, width=10)
         self.widgets['scene_transition_duration'].grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(auto_group, text="Confidence Required:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(auto_group, text=i18n.get("confidence_req") + ":").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.widgets['scene_confidence_required'] = ttk.Scale(auto_group, from_=0.1, to=1.0, orient=tk.HORIZONTAL)
         self.widgets['scene_confidence_required'].grid(row=3, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(auto_group, text="Sustained Duration (s):").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(auto_group, text=i18n.get("sustained_duration") + ":").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.widgets['scene_sustained_duration'] = ttk.Scale(auto_group, from_=0.1, to=5.0, orient=tk.HORIZONTAL)
         self.widgets['scene_sustained_duration'].grid(row=4, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
     
     def _create_ui_tab(self, notebook):
         """Create UI preferences tab"""
         frame = ttk.Frame(notebook, padding="10")
-        notebook.add(frame, text="UI Preferences")
+        notebook.add(frame, text=i18n.get("tab_ui"))
         
         # Appearance settings
-        app_group = ttk.LabelFrame(frame, text="Appearance", padding="10")
+        app_group = ttk.LabelFrame(frame, text=i18n.get("group_appearance"), padding="10")
         app_group.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
         app_group.columnconfigure(1, weight=1)
         
-        ttk.Label(app_group, text="Theme:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(app_group, text=i18n.get("language") + ":").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.widgets['ui_language'] = ttk.Combobox(app_group, values=['Traditional Chinese (zh_TW)', 'English (en_US)'], state='readonly', width=25)
+        self.widgets['ui_language'].grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+
+        ttk.Label(app_group, text=i18n.get("theme") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['ui_theme'] = ttk.Combobox(app_group, values=['light', 'dark'], state='readonly', width=15)
-        self.widgets['ui_theme'].grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        self.widgets['ui_theme'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(app_group, text="Update FPS:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(app_group, text=i18n.get("update_fps") + ":").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.widgets['ui_update_fps'] = ttk.Spinbox(app_group, from_=10, to=60, width=10)
-        self.widgets['ui_update_fps'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        self.widgets['ui_update_fps'].grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
         self.widgets['ui_show_confidence'] = tk.BooleanVar()
-        ttk.Checkbutton(app_group, text="Show confidence values", 
-                       variable=self.widgets['ui_show_confidence']).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ttk.Checkbutton(app_group, text=i18n.get("show_confidence"), 
+                       variable=self.widgets['ui_show_confidence']).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=2)
         
         self.widgets['ui_show_fps'] = tk.BooleanVar()
-        ttk.Checkbutton(app_group, text="Show FPS counter", 
-                       variable=self.widgets['ui_show_fps']).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ttk.Checkbutton(app_group, text=i18n.get("show_fps"), 
+                       variable=self.widgets['ui_show_fps']).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=2)
         
         # Color settings
-        color_group = ttk.LabelFrame(frame, text="Emotion Colors", padding="10")
+        color_group = ttk.LabelFrame(frame, text=i18n.get("emotion_colors"), padding="10")
         color_group.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N))
         color_group.columnconfigure(1, weight=1)
         
         self.color_buttons = {}
         emotions = ['happy', 'sad', 'angry', 'fear', 'surprise', 'disgust', 'neutral']
         for i, emotion in enumerate(emotions):
-            ttk.Label(color_group, text=f"{emotion.title()}:").grid(row=i, column=0, sticky=tk.W, pady=2)
+            ttk.Label(color_group, text=i18n.get(emotion) + ":").grid(row=i, column=0, sticky=tk.W, pady=2)
             self.color_buttons[emotion] = tk.Button(color_group, width=10, height=1,
                                                    command=lambda e=emotion: self._choose_color(e))
             self.color_buttons[emotion].grid(row=i, column=1, sticky=tk.W, padx=(5, 0), pady=2)
@@ -345,36 +350,36 @@ class SettingsDialog:
     def _create_performance_tab(self, notebook):
         """Create performance settings tab"""
         frame = ttk.Frame(notebook, padding="10")
-        notebook.add(frame, text="Performance")
+        notebook.add(frame, text=i18n.get("tab_perf"))
         
         # Resource limits
-        res_group = ttk.LabelFrame(frame, text="Resource Limits", padding="10")
+        res_group = ttk.LabelFrame(frame, text=i18n.get("group_resources"), padding="10")
         res_group.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
         res_group.columnconfigure(1, weight=1)
         
-        ttk.Label(res_group, text="Max CPU Usage (%):").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(res_group, text=i18n.get("max_cpu") + ":").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.widgets['perf_max_cpu_usage'] = ttk.Scale(res_group, from_=10, to=100, orient=tk.HORIZONTAL)
         self.widgets['perf_max_cpu_usage'].grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=2)
         
-        ttk.Label(res_group, text="Memory Limit (MB):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(res_group, text=i18n.get("memory_limit") + ":").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.widgets['perf_memory_limit_mb'] = ttk.Spinbox(res_group, from_=128, to=2048, increment=128, width=10)
         self.widgets['perf_memory_limit_mb'].grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
-        ttk.Label(res_group, text="Cache Size:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(res_group, text=i18n.get("cache_size") + ":").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.widgets['perf_cache_size'] = ttk.Spinbox(res_group, from_=10, to=500, increment=10, width=10)
         self.widgets['perf_cache_size'].grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
         
         # Optimization settings
-        opt_group = ttk.LabelFrame(frame, text="Optimizations", padding="10")
+        opt_group = ttk.LabelFrame(frame, text=i18n.get("group_optimization"), padding="10")
         opt_group.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N))
         
         self.widgets['perf_gpu_acceleration'] = tk.BooleanVar()
-        ttk.Checkbutton(opt_group, text="GPU Acceleration (if available)", 
+        ttk.Checkbutton(opt_group, text=i18n.get("gpu_accel"), 
                        variable=self.widgets['perf_gpu_acceleration']).grid(row=0, column=0, sticky=tk.W, pady=2)
         
         self.widgets['perf_threading_enabled'] = tk.BooleanVar()
-        ttk.Checkbutton(opt_group, text="Multi-threading", 
+        ttk.Checkbutton(opt_group, text=i18n.get("multithreading"), 
                        variable=self.widgets['perf_threading_enabled']).grid(row=1, column=0, sticky=tk.W, pady=2)
     
     def _choose_color(self, emotion: str):
@@ -411,6 +416,12 @@ class SettingsDialog:
         
         # UI settings
         self.widgets['ui_theme'].set(self.settings['ui']['theme'])
+        
+        # Language setting
+        lang_map = {'zh_TW': 'Traditional Chinese (zh_TW)', 'en_US': 'English (en_US)'}
+        current_lang = self.settings['ui'].get('language', 'zh_TW')
+        self.widgets['ui_language'].set(lang_map.get(current_lang, 'Traditional Chinese (zh_TW)'))
+        
         self.widgets['ui_update_fps'].set(self.settings['ui']['update_fps'])
         self.widgets['ui_show_confidence'].set(self.settings['ui']['show_confidence'])
         self.widgets['ui_show_fps'].set(self.settings['ui']['show_fps'])
@@ -453,6 +464,14 @@ class SettingsDialog:
         
         # UI settings
         self.settings['ui']['theme'] = self.widgets['ui_theme'].get()
+        
+        # Language setting
+        lang_selection = self.widgets['ui_language'].get()
+        if 'English' in lang_selection:
+            self.settings['ui']['language'] = 'en_US'
+        else:
+            self.settings['ui']['language'] = 'zh_TW'
+            
         self.settings['ui']['update_fps'] = int(self.widgets['ui_update_fps'].get())
         self.settings['ui']['show_confidence'] = self.widgets['ui_show_confidence'].get()
         self.settings['ui']['show_fps'] = self.widgets['ui_show_fps'].get()
@@ -482,12 +501,12 @@ class SettingsDialog:
                 
                 if success:
                     client.disconnect()
-                    messagebox.showinfo("Connection Test", "OBS connection successful!")
+                    messagebox.showinfo(i18n.get("test_connection"), i18n.get("test_success"))
                 else:
-                    messagebox.showerror("Connection Test", "Failed to connect to OBS.")
+                    messagebox.showerror(i18n.get("test_connection"), i18n.get("test_fail"))
                     
             except Exception as e:
-                messagebox.showerror("Connection Test", f"Connection error: {str(e)}")
+                messagebox.showerror(i18n.get("test_connection"), f"{i18n.get('test_error')}{str(e)}")
         
         # Run test in separate thread
         thread = threading.Thread(target=test_connection, daemon=True)
@@ -496,7 +515,7 @@ class SettingsDialog:
     def _load_profile(self):
         """Load settings from file"""
         filename = filedialog.askopenfilename(
-            title="Load Settings Profile",
+            title=i18n.get("load_profile"),
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
             defaultextension=".json"
         )
@@ -514,15 +533,15 @@ class SettingsDialog:
                 self._clear_widgets()
                 self._load_settings()
                 
-                messagebox.showinfo("Load Profile", "Settings profile loaded successfully!")
+                messagebox.showinfo(i18n.get("load_profile"), i18n.get("profile_loaded"))
                 
             except Exception as e:
-                messagebox.showerror("Load Profile", f"Failed to load profile: {str(e)}")
+                messagebox.showerror(i18n.get("load_profile"), f"Failed to load profile: {str(e)}")
     
     def _save_profile(self):
         """Save current settings to file"""
         filename = filedialog.asksaveasfilename(
-            title="Save Settings Profile",
+            title=i18n.get("save_profile"),
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
             defaultextension=".json"
         )
@@ -535,14 +554,14 @@ class SettingsDialog:
                 with open(filename, 'w', encoding='utf-8') as f:
                     json.dump(self.settings, f, indent=2, ensure_ascii=False)
                 
-                messagebox.showinfo("Save Profile", "Settings profile saved successfully!")
+                messagebox.showinfo(i18n.get("save_profile"), i18n.get("profile_saved"))
                 
             except Exception as e:
-                messagebox.showerror("Save Profile", f"Failed to save profile: {str(e)}")
+                messagebox.showerror(i18n.get("save_profile"), f"Failed to save profile: {str(e)}")
     
     def _reset_defaults(self):
         """Reset all settings to defaults"""
-        if messagebox.askyesno("Reset Settings", "Are you sure you want to reset all settings to defaults?"):
+        if messagebox.askyesno(i18n.get("reset_defaults"), i18n.get("reset_confirm")):
             self.settings = self.default_settings.copy()
             self._clear_widgets()
             self._load_settings()
@@ -571,11 +590,16 @@ class SettingsDialog:
             self.dialog.destroy()
             
         except Exception as e:
-            messagebox.showerror("Settings Error", f"Failed to save settings: {str(e)}")
+            messagebox.showerror(i18n.get("error"), f"Failed to save settings: {str(e)}")
     
     def _on_cancel(self):
         """Handle Cancel button click"""
         self.dialog.destroy()
+
+    def close(self):
+        """Close the dialog programmatically"""
+        if self.dialog and self.dialog.winfo_exists():
+            self.dialog.destroy()
 
 
 def show_settings_dialog(parent, settings: Dict[str, Any], callback: Optional[Callable] = None):

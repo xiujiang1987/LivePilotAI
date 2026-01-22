@@ -1,24 +1,28 @@
 # LivePilotAI - AI智慧導播平台依賴套件
 
 # 核心AI/ML框架
-tensorflow>=2.13.0
+# tensorflow>=2.13.0  # Removed for lightweight deployment
 opencv-python>=4.8.0
-torch>=2.0.0
-torchvision>=0.15.0
+# torch>=2.0.0       # Removed for lightweight deployment
+# torchvision>=0.15.0
 numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
+# pandas>=2.0.0      # Removed if not strictly needed (keep if analyzing CSVs)
+# scikit-learn>=1.3.0
+
+# 語音識別
+SpeechRecognition>=3.10.0
+PyAudio>=0.2.13
 
 # 電腦視覺與影像處理
 mediapipe>=0.10.0
-dlib>=19.24.0
-face-recognition>=1.3.0
+# dlib>=19.24.0
+# face-recognition>=1.3.0
 pillow>=10.0.0
 
 # Web框架與API
 fastapi>=0.100.0
 uvicorn>=0.23.0
-websockets>=11.0.0
+websockets==11.0.2
 python-socketio>=5.8.0
 
 # 串流與媒體處理
@@ -37,6 +41,7 @@ pydantic>=2.0.0
 requests>=2.31.0
 aiofiles>=23.0.0
 python-multipart>=0.0.6
+psutil>=5.9.0
 
 # 開發與測試
 pytest>=7.4.0
@@ -52,4 +57,5 @@ structlog>=23.0.0
 
 # OBS整合
 obs-websocket-py>=1.0.0
+websockets==11.0.2
 websocket-client>=1.6.0

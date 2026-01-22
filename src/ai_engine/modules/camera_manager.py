@@ -8,6 +8,7 @@ import cv2
 import logging
 import time
 import threading
+import os
 from typing import Optional, Tuple, Any, Callable
 from dataclasses import dataclass
 from collections import deque
@@ -68,10 +69,20 @@ class CameraManager:
         try:
             logger.info(f"正在初始化攝像頭 (device_id: {self.config.device_id})...")
             
-            self.cap = cv2.VideoCapture(self.config.device_id)
+            # 嘗試使用 DirectShow (Windows) 或默認後端
+            if os.name == 'nt':
+                self.cap = cv2.VideoCapture(self.config.device_id, cv2.CAP_DSHOW)
+            else:
+                self.cap = cv2.VideoCapture(self.config.device_id)
             
             if not self.cap.isOpened():
-                raise CameraSetupError(f"無法打開攝像頭 {self.config.device_id}")
+                # 如果 DirectShow 失敗，嘗試默認
+                if os.name == 'nt':
+                    logger.warning("DirectShow 初始化失敗，嘗試默認後端...")
+                    self.cap = cv2.VideoCapture(self.config.device_id)
+                
+                if not self.cap.isOpened():
+                    raise CameraSetupError(f"無法打開攝像頭 {self.config.device_id}")
             
             # 設置攝像頭參數
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
@@ -95,8 +106,16 @@ class CameraManager:
             self.is_initialized = False
             return False
     
-    def start_camera(self) -> bool:
+    def start_camera(self, device_id: Optional[int] = None) -> bool:
         """啟動攝像頭 - 為兼容性提供"""
+        if device_id is not None:
+            self.config.device_id = device_id
+            # 如果已經初始化且設備ID改變，需要重新初始化
+            if self.is_initialized:
+                self.stop_real_time_capture()
+                self.release()
+                self.is_initialized = False
+                
         return self.start_real_time_capture()
     
     def stop_camera(self):
@@ -190,6 +209,15 @@ class CameraManager:
                 logger.error(f"捕獲循環錯誤: {e}")
                 time.sleep(0.1)
     
+    def get_frame(self) -> Optional[Any]:
+        """獲取當前幀 (兼容 PreviewWindow)"""
+        if self.real_time_mode:
+            with self.frame_lock:
+                return self.current_frame.copy() if self.current_frame is not None else None
+        else:
+            success, frame = self.read_frame()
+            return frame if success else None
+
     def read_frame(self) -> Tuple[bool, Optional[Any]]:
         """讀取攝像頭幀"""
         try:
@@ -281,6 +309,22 @@ class CameraManager:
     def get_performance_stats(self) -> PerformanceStats:
         """獲取性能統計"""
         return self.performance
+
+    def get_available_cameras(self) -> list:
+        """獲取可用攝像頭列表"""
+        available_cameras = []
+        # 掃描前 5 個索引
+        for i in range(5):
+            try:
+                cap = cv2.VideoCapture(i)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        available_cameras.append(f"Camera {i}")
+                    cap.release()
+            except:
+                pass
+        return available_cameras if available_cameras else ["Default Camera"]
 
     def __del__(self):
         """析構函數，確保資源被釋放"""

@@ -11,9 +11,14 @@ import importlib
 import time
 from pathlib import Path
 
+# 設置正確的項目路徑
+project_root = Path(__file__).parent.parent.parent  # 回到 LivePilotAI 根目錄
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / 'src'))
+
 class LivePilotAIVerifier:
     def __init__(self):
-        self.project_root = Path(__file__).parent
+        self.project_root = Path(__file__).parent.parent.parent  # 回到 LivePilotAI 根目錄
         self.results = []
         
     def log_result(self, test_name: str, success: bool, message: str = ""):
@@ -66,17 +71,16 @@ class LivePilotAIVerifier:
         try:
             from src.ai_engine.modules.camera_manager import CameraManager
             camera_mgr = CameraManager()
-            self.log_result("CameraManager instantiation", True)
-        except Exception as e:
+            self.log_result("CameraManager instantiation", True)        except Exception as e:
             self.log_result("CameraManager instantiation", False, str(e))
-            
+        
         try:
             from src.ai_engine.modules.face_detector import FaceDetector
             face_detector = FaceDetector()
             self.log_result("FaceDetector instantiation", True)
         except Exception as e:
             self.log_result("FaceDetector instantiation", False, str(e))
-            
+        
         try:
             from src.ai_engine.modules.real_time_detector import RealTimeEmotionDetector
             real_time_detector = RealTimeEmotionDetector()
@@ -90,26 +94,26 @@ class LivePilotAIVerifier:
         
         try:
             # 嘗試編譯主應用程式
-            with open("main_day5.py", "r", encoding="utf-8") as f:
+            main_file = self.project_root / "main.py"
+            with open(main_file, "r", encoding="utf-8") as f:
                 code = f.read()
             
-            compile(code, "main_day5.py", "exec")
-            self.log_result("main_day5.py syntax check", True)
+            compile(code, "main.py", "exec")
+            self.log_result("main.py syntax check", True)
             
         except SyntaxError as e:
-            self.log_result("main_day5.py syntax check", False, f"Syntax error: {e}")
+            self.log_result("main.py syntax check", False, f"Syntax error: {e}")
         except Exception as e:
-            self.log_result("main_day5.py syntax check", False, str(e))
-    
-    def test_launcher_options(self):
+            self.log_result("main.py syntax check", False, str(e))
+      def test_launcher_options(self):
         """測試啟動器選項"""
         print("\n=== 測試啟動器選項 ===")
         
         # 測試各種啟動模式
         launcher_tests = [
-            ("python main_day5.py --help", "Help option"),
-            ("python main_day5.py --mode=test", "Test mode"),
-            ("python main_day5.py --mode=demo", "Demo mode"),
+            ("python main.py --help", "Help option"),
+            ("python main.py --mode=test", "Test mode"),
+            ("python main.py --mode=demo", "Demo mode"),
         ]
         
         for cmd, description in launcher_tests:
@@ -147,10 +151,10 @@ class LivePilotAIVerifier:
         ]
         
         for script in emergency_scripts:
-            if os.path.exists(script):
-                try:
-                    # 檢查語法
-                    with open(script, "r", encoding="utf-8") as f:
+            script_path = self.project_root / script
+            if script_path.exists():
+                try:                    # 檢查語法
+                    with open(script_path, "r", encoding="utf-8") as f:
                         code = f.read()
                     compile(code, script, "exec")
                     self.log_result(f"Emergency tool {script}", True, "Syntax OK")
@@ -165,17 +169,32 @@ class LivePilotAIVerifier:
         
         try:
             from src.ui.preview_window import PreviewWindow
+            from src.ui.main_panel import MainPanel
             
-            # 測試PreviewWindow的方法
-            preview = PreviewWindow()
+            # 先創建一個模擬的 main_panel
+            try:
+                main_panel = MainPanel()
+                self.log_result("MainPanel instantiation", True)
+            except Exception as e:
+                # 如果 MainPanel 需要參數，使用 None 或創建模擬對象
+                main_panel = None
+                self.log_result("MainPanel instantiation", False, f"Skipped: {e}")
             
-            # 檢查所需方法是否存在
-            required_methods = ['show', 'hide', 'focus', 'is_visible']
-            for method in required_methods:
-                if hasattr(preview, method):
-                    self.log_result(f"PreviewWindow.{method}", True)
-                else:
-                    self.log_result(f"PreviewWindow.{method}", False, "Method missing")
+            # 測試PreviewWindow的實例化
+            try:
+                preview = PreviewWindow(main_panel)
+                self.log_result("PreviewWindow instantiation", True)
+                
+                # 檢查所需方法是否存在
+                required_methods = ['show', 'hide', 'focus', 'is_visible']
+                for method in required_methods:
+                    if hasattr(preview, method):
+                        self.log_result(f"PreviewWindow.{method}", True)
+                    else:
+                        self.log_result(f"PreviewWindow.{method}", False, "Method missing")
+                        
+            except Exception as e:
+                self.log_result("PreviewWindow instantiation", False, str(e))
                     
         except Exception as e:
             self.log_result("PreviewWindow functionality", False, str(e))

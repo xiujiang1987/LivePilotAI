@@ -10,12 +10,15 @@ import logging
 import time
 import threading
 from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .camera_manager import CameraManager, CameraConfig
 from .face_detector import FaceDetector, FaceDetection, DetectionConfig
 from ..emotion_detector import EmotionDetector
+from .face_tracker import FaceTracker
+from .emotion_intensity import EmotionIntensityAnalyzer, EmotionDynamics
+from .visualizer import Visualizer
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +37,10 @@ class EmotionResult:
 class RealTimeConfig:
     """即時檢測配置"""
     # 攝像頭配置
-    camera_config: CameraConfig = CameraConfig()
+    camera_config: CameraConfig = field(default_factory=CameraConfig)
     
     # 檢測配置
-    detection_config: DetectionConfig = DetectionConfig()
+    detection_config: DetectionConfig = field(default_factory=DetectionConfig)
     
     # 情感檢測配置
     emotion_model_path: str = "models/emotion_detection.h5"
@@ -72,6 +75,11 @@ class RealTimeEmotionDetector:
         self.camera_manager = CameraManager(self.config.camera_config)
         self.face_detector = FaceDetector(self.config.detection_config)
         self.emotion_detector = EmotionDetector(self.config.emotion_model_path)
+        
+        # Day 5 新增組件
+        self.face_tracker = FaceTracker()
+        self.visualizer = Visualizer()
+        self.analyzers: Dict[int, EmotionIntensityAnalyzer] = {} # face_id -> analyzer
         
         # 運行狀態
         self.is_running = False
@@ -180,23 +188,69 @@ class RealTimeEmotionDetector:
             # 檢測人臉
             faces = self.face_detector.detect_faces(frame)
             
+            # 轉換為矩形列表供追蹤器使用
+            rects = [(f.x, f.y, f.width, f.height) for f in faces]
+            
+            # 更新追蹤器
+            tracked_faces = self.face_tracker.update(rects)
+            
             # 情感識別
             emotion_results = []
-            for i, face in enumerate(faces):
-                # 提取人臉區域
-                face_roi = self.face_detector.get_face_roi(frame, face)
-                if face_roi is not None:                    # 進行情感檢測
-                    emotion_data = self.emotion_detector.predict_emotion_from_image(face_roi)
+            
+            # 處理每個被追蹤的人臉
+            for face_id, tracked_face in tracked_faces.items():
+                # 如果消失太久，跳過處理
+                if tracked_face.disappeared_frames > 0:
+                    continue
                     
-                    if emotion_data:
-                        emotion_result = EmotionResult(
-                            face_id=i,
-                            emotion=emotion_data.get('dominant_emotion', 'Unknown'),
-                            confidence=emotion_data.get('confidence', 0.0),
-                            emotions_distribution=emotion_data.get('emotions', {}),
-                            face_detection=face
-                        )
-                        emotion_results.append(emotion_result)
+                x, y, w, h = tracked_face.bbox
+                
+                # 邊界檢查與修正
+                h_img, w_img = frame.shape[:2]
+                x = max(0, x); y = max(0, y)
+                w = min(w, w_img - x); h = min(h, h_img - y)
+                
+                if w < 20 or h < 20: continue
+
+                # 提取 ROI
+                face_roi = frame[y:y+h, x:x+w]
+                
+                # 情感檢測
+                emotion_data = self.emotion_detector.predict_emotion_from_image(face_roi)
+                
+                if emotion_data:
+                    # 獲取或創建分析器
+                    if face_id not in self.analyzers:
+                        self.analyzers[face_id] = EmotionIntensityAnalyzer()
+                    
+                    analyzer = self.analyzers[face_id]
+                    
+                    # 分析強度與動態
+                    dynamics = analyzer.analyze(emotion_data.get('emotions', {}))
+                    
+                    # 構造結果
+                    face_detection_obj = FaceDetection(x=x, y=y, width=w, height=h)
+                    
+                    emotion_result = EmotionResult(
+                        face_id=face_id,
+                        emotion=dynamics.current_emotion,
+                        confidence=dynamics.intensity, 
+                        emotions_distribution=emotion_data.get('emotions', {}),
+                        face_detection=face_detection_obj
+                    )
+                    # 附加動態屬性供視覺化使用
+                    emotion_result.intensity = dynamics.intensity
+                    emotion_result.metrics = {
+                        "stability": dynamics.stability,
+                        "transition_speed": dynamics.transition_speed
+                    }
+                    
+                    emotion_results.append(emotion_result)
+            
+            # 清理過期的分析器
+            for fid in list(self.analyzers.keys()):
+                if fid not in tracked_faces:
+                    del self.analyzers[fid]
             
             # 更新結果
             with self.results_lock:
@@ -216,71 +270,37 @@ class RealTimeEmotionDetector:
             
             # 檢查性能
             if processing_time > self.config.max_detection_delay:
-                logger.warning(f"檢測延遲過高: {processing_time:.3f}s")
+                # logger.warning(f"檢測延遲過高: {processing_time:.3f}s")
+                pass
                 
         except Exception as e:
             logger.error(f"幀處理失敗: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _create_display_frame(self, frame: np.ndarray, results: List[EmotionResult]) -> np.ndarray:
         """創建顯示幀"""
-        display_frame = frame.copy()
-        
-        # 繪製人臉框和情感標籤
+        # 轉換數據供 Visualizer 使用
+        detections_data = []
         for result in results:
             face = result.face_detection
+            data = {
+                "bbox": (face.x, face.y, face.width, face.height),
+                "emotion": result.emotion,
+                "confidence": result.confidence,
+                "face_id": result.face_id,
+                "intensity": getattr(result, "intensity", 0.0),
+                "landmarks": getattr(face, "landmarks", None)
+            }
+            detections_data.append(data)
             
-            # 繪製人臉框
-            color = self._get_emotion_color(result.emotion)
-            cv2.rectangle(
-                display_frame,
-                (face.x, face.y),
-                (face.x + face.width, face.y + face.height),
-                color, 2
-            )
-            
-            # 準備標籤文字
-            if self.config.show_emotions:
-                label = result.emotion
-                if self.config.show_confidence:
-                    label += f" ({result.confidence:.2f})"
-            else:
-                label = f"Face {result.face_id + 1}"
-            
-            # 繪製標籤背景
-            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-            label_y = face.y - 10 if face.y - 10 > label_size[1] else face.y + face.height + 25
-            
-            cv2.rectangle(
-                display_frame,
-                (face.x, label_y - label_size[1] - 8),
-                (face.x + label_size[0] + 8, label_y + 5),
-                color, -1
-            )
-            
-            # 繪製標籤文字
-            cv2.putText(
-                display_frame, label,
-                (face.x + 4, label_y - 2),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2
-            )
+        # 使用 Visualizer 強大的繪圖功能
+        display_frame = self.visualizer.draw_detections(frame, detections_data)
         
-        # 繪製系統信息
+        # 繪製系統信息 (FPS, 狀態等)
         self._draw_system_info(display_frame)
         
         return display_frame
-    
-    def _get_emotion_color(self, emotion: str) -> tuple:
-        """獲取情感對應的顏色"""
-        color_map = {
-            'Happy': (0, 255, 0),      # 綠色
-            'Sad': (255, 0, 0),        # 藍色
-            'Angry': (0, 0, 255),      # 紅色
-            'Surprise': (0, 255, 255), # 黃色
-            'Fear': (128, 0, 128),     # 紫色
-            'Disgust': (0, 128, 255),  # 橙色
-            'Neutral': (128, 128, 128) # 灰色
-        }
-        return color_map.get(emotion, (255, 255, 255))  # 默認白色
     
     def _draw_system_info(self, frame: np.ndarray):
         """繪製系統信息"""

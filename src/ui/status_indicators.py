@@ -11,6 +11,7 @@ import threading
 from enum import Enum
 from dataclasses import dataclass
 import logging
+from ..utils.i18n import i18n
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -60,7 +61,7 @@ class StatusIndicator(ttk.Frame):
         
         self.name = name
         self.callback = callback
-        self.status_info = StatusInfo(name, StatusLevel.UNKNOWN, "Initializing...", time.time())
+        self.status_info = StatusInfo(name, StatusLevel.UNKNOWN, i18n.get("initializing"), time.time())
         self.is_blinking = False
         self.blink_job = None
         
@@ -94,19 +95,25 @@ class StatusIndicator(ttk.Frame):
     
     def _create_tooltip(self):
         """Create tooltip for detailed status information"""
+        self.tooltip_window = None
+        
         def show_tooltip(event):
+            if self.tooltip_window:
+                return
+                
             tooltip = tk.Toplevel()
             tooltip.wm_overrideredirect(True)
             tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            self.tooltip_window = tooltip
             
             # Tooltip content
-            content = f"Component: {self.status_info.name}\n"
-            content += f"Status: {self.status_info.level.name}\n"
-            content += f"Message: {self.status_info.message}\n"
-            content += f"Updated: {time.strftime('%H:%M:%S', time.localtime(self.status_info.timestamp))}"
+            content = f"{i18n.get('component')}: {self.status_info.name}\n"
+            content += f"{i18n.get('status')}: {self.status_info.level.name}\n"
+            content += f"{i18n.get('message')}: {self.status_info.message}\n"
+            content += f"{i18n.get('updated')}: {time.strftime('%H:%M:%S', time.localtime(self.status_info.timestamp))}"
             
             if self.status_info.details:
-                content += "\n\nDetails:\n"
+                content += f"\n\n{i18n.get('details')}:\n"
                 for key, value in self.status_info.details.items():
                     content += f"  {key}: {value}\n"
             
@@ -114,17 +121,15 @@ class StatusIndicator(ttk.Frame):
                            relief="solid", borderwidth=1, font=("Arial", 8))
             label.pack()
             
-            def hide_tooltip():
-                tooltip.destroy()
-            
-            tooltip.after(3000, hide_tooltip)  # Auto-hide after 3 seconds
-        
         def hide_tooltip(event):
-            # Let the auto-hide handle it
-            pass
+            if self.tooltip_window:
+                self.tooltip_window.destroy()
+                self.tooltip_window = None
         
         self.icon_label.bind("<Enter>", show_tooltip)
         self.text_label.bind("<Enter>", show_tooltip)
+        self.icon_label.bind("<Leave>", hide_tooltip)
+        self.text_label.bind("<Leave>", hide_tooltip)
     
     def update_status(self, level: StatusLevel, message: str, details: Optional[Dict[str, Any]] = None):
         """Update the status of this indicator"""
@@ -202,7 +207,7 @@ class StatusPanel(ttk.Frame):
     def __init__(self, parent, title: str = "System Status", **kwargs):
         super().__init__(parent, **kwargs)
         
-        self.title = title
+        self.title = title if title != "System Status" else i18n.get("system_status")
         self.indicators: Dict[str, StatusIndicator] = {}
         self.is_collapsed = False
         self.status_history: Dict[str, list] = {}
@@ -317,13 +322,13 @@ class StatusPanel(ttk.Frame):
                    if indicator.status_info.level == StatusLevel.ERROR)
         
         if error > 0:
-            count_text = f"({total} components, {error} errors)"
+            count_text = i18n.get("components_error").format(total=total, error=error)
             self.count_label.config(foreground="red")
         elif online == total and total > 0:
-            count_text = f"({total} components, all online)"
+            count_text = i18n.get("components_all_online").format(total=total)
             self.count_label.config(foreground="green")
         else:
-            count_text = f"({total} components, {online} online)"
+            count_text = i18n.get("components_count").format(total=total, online=online)
             self.count_label.config(foreground="black")
         
         self.count_label.config(text=count_text)
@@ -509,7 +514,7 @@ class SystemStatusManager:
 # Convenience functions for common status updates
 def create_obs_status_panel(parent, status_manager: SystemStatusManager) -> StatusPanel:
     """Create a pre-configured OBS status panel"""
-    panel = status_manager.create_panel(parent, 'obs', 'OBS Studio')
+    panel = status_manager.create_panel(parent, 'obs', i18n.get('status_obs_studio'))
     
     # Add common OBS indicators
     panel.add_indicator('connection')
@@ -522,7 +527,7 @@ def create_obs_status_panel(parent, status_manager: SystemStatusManager) -> Stat
 
 def create_ai_status_panel(parent, status_manager: SystemStatusManager) -> StatusPanel:
     """Create a pre-configured AI Engine status panel"""
-    panel = status_manager.create_panel(parent, 'ai_engine', 'AI Engine')
+    panel = status_manager.create_panel(parent, 'ai_engine', i18n.get('status_ai_engine'))
     
     # Add common AI indicators
     panel.add_indicator('emotion_detector')
@@ -535,7 +540,7 @@ def create_ai_status_panel(parent, status_manager: SystemStatusManager) -> Statu
 
 def create_system_status_panel(parent, status_manager: SystemStatusManager) -> StatusPanel:
     """Create a pre-configured System status panel"""
-    panel = status_manager.create_panel(parent, 'system', 'System Resources')
+    panel = status_manager.create_panel(parent, 'system', i18n.get('status_system_resources'))
     
     # Add common system indicators
     panel.add_indicator('cpu')

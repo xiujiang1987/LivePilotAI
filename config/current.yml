@@ -1,0 +1,39 @@
+ai_models:
+  batch_size: 32
+  confidence_threshold: 0.7
+  emotion_model_path: models/emotion_detection.h5
+  face_cascade_path: models/haarcascade_frontalface_default.xml
+  input_size: !!python/tuple
+  - 48
+  - 48
+api:
+  cors_origins:
+  - http://localhost:3000
+  debug: false
+  host: 127.0.0.1
+  port: 8000
+  rate_limit: 100
+database:
+  database: livepilotai
+  host: localhost
+  max_connections: 20
+  password: ''
+  port: 5432
+  username: postgres
+debug: true
+environment: development
+logging:
+  backup_count: 5
+  console_output: true
+  file_path: logs/livepilotai.log
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  level: INFO
+  max_file_size: 10485760
+obs:
+  auto_connect: true
+  reconnect_attempts: 5
+  timeout: 10
+  websocket_host: localhost
+  websocket_password: RQ1DxrJSipxlCTvK
+  websocket_port: 4455
+secret_key: ''

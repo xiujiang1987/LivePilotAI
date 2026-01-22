@@ -1,0 +1,498 @@
+"""
+LivePilotAI 配置管理
+統一管理系統配置參數
+"""
+
+import os
+import json
+import yaml
+from pathlib import Path
+from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+from dotenv import load_dotenv
+
+# 載入環境變數
+load_dotenv()
+
+@dataclass
+class OBSConfig:
+    """OBS Studio 配置"""
+    host: str = "localhost"
+    port: int = 4444
+    password: str = ""
+    timeout: float = 10.0
+    retry_attempts: int = 3
+    retry_delay: float = 2.0
+
+@dataclass
+class CameraConfig:
+    """攝影機配置"""
+    index: int = 0
+    width: int = 1920
+    height: int = 1080
+    fps: int = 30
+    auto_exposure: bool = True
+    brightness: float = 0.5
+    contrast: float = 0.5
+
+@dataclass
+class AIConfig:
+    """AI引擎配置"""
+    emotion_detection_interval: float = 0.5
+    layout_decision_interval: float = 5.0
+    enable_auto_layout: bool = True
+    enable_emotion_overlay: bool = True
+    confidence_threshold: float = 0.7
+    emotion_smoothing_window: int = 5
+    model_path: str = "models/emotion_model.h5"
+    face_cascade_path: str = "models/haarcascade_frontalface_default.xml"
+
+@dataclass
+class WebConfig:
+    """Web界面配置"""
+    host: str = "0.0.0.0"
+    port: int = 8000
+    cors_origins: list = field(default_factory=lambda: ["*"])
+    max_connections: int = 100
+    heartbeat_interval: float = 2.0
+
+@dataclass
+class LogConfig:
+    """日誌配置"""
+    level: str = "INFO"
+    file_path: str = "logs/livepilot.log"
+    max_file_size: str = "10MB"
+    backup_count: int = 5
+    format: str = "{time} | {level} | {name} | {message}"
+
+@dataclass
+class LayoutConfig:
+    """佈局配置"""
+    scenes: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "gaming": {
+            "description": "遊戲模式",
+            "sources": ["Camera", "Game Capture", "Chat Overlay"],
+            "camera_size": (320, 240),
+            "camera_position": (10, 10)
+        },
+        "chatting": {
+            "description": "聊天模式", 
+            "sources": ["Camera", "Background", "Chat Overlay"],
+            "camera_size": (640, 480),
+            "camera_position": (100, 50)
+        },
+        "showcase": {
+            "description": "展示模式",
+            "sources": ["Camera", "Screen Capture", "Lower Third"],
+            "camera_size": (480, 360),
+            "camera_position": (50, 100)
+        },
+        "focused": {
+            "description": "專注模式",
+            "sources": ["Camera", "Background"],
+            "camera_size": (800, 600),
+            "camera_position": (200, 100)
+        },
+        "high_energy": {
+            "description": "高能模式",
+            "sources": ["Camera", "Effects", "Music Visualizer"],
+            "camera_size": (600, 450),
+            "camera_position": (150, 75)
+        }
+    })
+
+@dataclass
+class SystemConfig:
+    """系統總配置"""
+    obs: OBSConfig = field(default_factory=OBSConfig)
+    camera: CameraConfig = field(default_factory=CameraConfig)
+    ai: AIConfig = field(default_factory=AIConfig)
+    web: WebConfig = field(default_factory=WebConfig)
+    log: LogConfig = field(default_factory=LogConfig)
+    layout: LayoutConfig = field(default_factory=LayoutConfig)
+    
+    # 系統設置
+    debug_mode: bool = False
+    enable_analytics: bool = True
+    auto_start: bool = False
+    check_updates: bool = True
+
+class ConfigManager:
+    """配置管理器"""
+    
+    def __init__(self, config_file: str = "config.yaml"):
+        self.config_file = Path(config_file)
+        self.config = SystemConfig()
+        self._load_config()
+    
+    def _load_config(self):
+        """載入配置"""
+        # 1. 先載入預設配置
+        self._load_default_config()
+        
+        # 2. 載入檔案配置
+        if self.config_file.exists():
+            self._load_file_config()
+        
+        # 3. 載入環境變數配置（優先級最高）
+        self._load_env_config()
+    
+    def _load_default_config(self):
+        """載入預設配置"""
+        self.config = SystemConfig()
+    
+    def _load_file_config(self):
+        """載入檔案配置"""
+        try:
+            if self.config_file.suffix.lower() == '.yaml':
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+            elif self.config_file.suffix.lower() == '.json':
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            else:
+                return
+            
+            if data:
+                self._update_config_from_dict(data)
+                
+        except Exception as e:
+            print(f"載入配置檔案失敗: {e}")
+    
+    def _load_env_config(self):
+        """載入環境變數配置"""
+        # OBS配置
+        obs_host = os.getenv('OBS_HOST')
+        if obs_host:
+            self.config.obs.host = obs_host
+        
+        obs_port = os.getenv('OBS_PORT')
+        if obs_port:
+            try:
+                self.config.obs.port = int(obs_port)
+            except ValueError:
+                pass
+        
+        obs_password = os.getenv('OBS_PASSWORD')
+        if obs_password:
+            self.config.obs.password = obs_password
+        
+        # 攝影機配置
+        camera_index = os.getenv('CAMERA_INDEX')
+        if camera_index:
+            try:
+                self.config.camera.index = int(camera_index)
+            except ValueError:
+                pass
+                
+        camera_width = os.getenv('CAMERA_WIDTH')
+        if camera_width:
+            try:
+                self.config.camera.width = int(camera_width)
+            except ValueError:
+                pass
+                
+        camera_height = os.getenv('CAMERA_HEIGHT')
+        if camera_height:
+            try:
+                self.config.camera.height = int(camera_height)
+            except ValueError:
+                pass
+        
+        # AI配置
+        emotion_interval = os.getenv('EMOTION_DETECTION_INTERVAL')
+        if emotion_interval:
+            try:
+                self.config.ai.emotion_detection_interval = float(emotion_interval)
+            except ValueError:
+                pass
+                
+        layout_interval = os.getenv('LAYOUT_DECISION_INTERVAL')
+        if layout_interval:
+            try:
+                self.config.ai.layout_decision_interval = float(layout_interval)
+            except ValueError:
+                pass
+                
+        auto_layout = os.getenv('ENABLE_AUTO_LAYOUT')
+        if auto_layout:
+            self.config.ai.enable_auto_layout = auto_layout.lower() == 'true'
+            
+        emotion_overlay = os.getenv('ENABLE_EMOTION_OVERLAY')
+        if emotion_overlay:
+            self.config.ai.enable_emotion_overlay = emotion_overlay.lower() == 'true'
+        
+        # Web配置
+        web_host = os.getenv('WEB_HOST')
+        if web_host:
+            self.config.web.host = web_host
+            
+        web_port = os.getenv('WEB_PORT')
+        if web_port:
+            try:
+                self.config.web.port = int(web_port)
+            except ValueError:
+                pass
+        
+        # 日誌配置
+        log_level = os.getenv('LOG_LEVEL')
+        if log_level:
+            self.config.log.level = log_level
+            
+        log_file = os.getenv('LOG_FILE')
+        if log_file:
+            self.config.log.file_path = log_file
+        
+        # 系統配置
+        debug_mode = os.getenv('DEBUG_MODE')
+        if debug_mode:
+            self.config.debug_mode = debug_mode.lower() == 'true'
+    
+    def _update_config_from_dict(self, data: Dict[str, Any]):
+        """從字典更新配置"""
+        if 'obs' in data:
+            obs_data = data['obs']
+            for key, value in obs_data.items():
+                if hasattr(self.config.obs, key):
+                    setattr(self.config.obs, key, value)
+        
+        if 'camera' in data:
+            camera_data = data['camera']
+            for key, value in camera_data.items():
+                if hasattr(self.config.camera, key):
+                    setattr(self.config.camera, key, value)
+        
+        if 'ai' in data:
+            ai_data = data['ai']
+            for key, value in ai_data.items():
+                if hasattr(self.config.ai, key):
+                    setattr(self.config.ai, key, value)
+        
+        if 'web' in data:
+            web_data = data['web']
+            for key, value in web_data.items():
+                if hasattr(self.config.web, key):
+                    setattr(self.config.web, key, value)
+        
+        if 'log' in data:
+            log_data = data['log']
+            for key, value in log_data.items():
+                if hasattr(self.config.log, key):
+                    setattr(self.config.log, key, value)
+        
+        if 'layout' in data:
+            if 'scenes' in data['layout']:
+                self.config.layout.scenes.update(data['layout']['scenes'])
+    
+    def save_config(self, file_path: Optional[str] = None):
+        """保存配置到檔案"""
+        if file_path:
+            save_path = Path(file_path)
+        else:
+            save_path = self.config_file
+        
+        config_dict = self.to_dict()
+        
+        try:
+            if save_path.suffix.lower() == '.yaml':
+                with open(save_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(config_dict, f, default_flow_style=False, allow_unicode=True)
+            elif save_path.suffix.lower() == '.json':
+                with open(save_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
+            
+            print(f"配置已保存到: {save_path}")
+            
+        except Exception as e:
+            print(f"保存配置失敗: {e}")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """轉換為字典"""
+        return {
+            "obs": {
+                "host": self.config.obs.host,
+                "port": self.config.obs.port,
+                "password": self.config.obs.password,
+                "timeout": self.config.obs.timeout,
+                "retry_attempts": self.config.obs.retry_attempts,
+                "retry_delay": self.config.obs.retry_delay
+            },
+            "camera": {
+                "index": self.config.camera.index,
+                "width": self.config.camera.width,
+                "height": self.config.camera.height,
+                "fps": self.config.camera.fps,
+                "auto_exposure": self.config.camera.auto_exposure,
+                "brightness": self.config.camera.brightness,
+                "contrast": self.config.camera.contrast
+            },
+            "ai": {
+                "emotion_detection_interval": self.config.ai.emotion_detection_interval,
+                "layout_decision_interval": self.config.ai.layout_decision_interval,
+                "enable_auto_layout": self.config.ai.enable_auto_layout,
+                "enable_emotion_overlay": self.config.ai.enable_emotion_overlay,
+                "confidence_threshold": self.config.ai.confidence_threshold,
+                "emotion_smoothing_window": self.config.ai.emotion_smoothing_window,
+                "model_path": self.config.ai.model_path,
+                "face_cascade_path": self.config.ai.face_cascade_path
+            },
+            "web": {
+                "host": self.config.web.host,
+                "port": self.config.web.port,
+                "cors_origins": self.config.web.cors_origins,
+                "max_connections": self.config.web.max_connections,
+                "heartbeat_interval": self.config.web.heartbeat_interval
+            },
+            "log": {
+                "level": self.config.log.level,
+                "file_path": self.config.log.file_path,
+                "max_file_size": self.config.log.max_file_size,
+                "backup_count": self.config.log.backup_count,
+                "format": self.config.log.format
+            },
+            "layout": {
+                "scenes": self.config.layout.scenes
+            },
+            "debug_mode": self.config.debug_mode,
+            "enable_analytics": self.config.enable_analytics,
+            "auto_start": self.config.auto_start,
+            "check_updates": self.config.check_updates
+        }
+    
+    def update_obs_config(self, **kwargs):
+        """更新OBS配置"""
+        for key, value in kwargs.items():
+            if hasattr(self.config.obs, key):
+                setattr(self.config.obs, key, value)
+    
+    def update_camera_config(self, **kwargs):
+        """更新攝影機配置"""
+        for key, value in kwargs.items():
+            if hasattr(self.config.camera, key):
+                setattr(self.config.camera, key, value)
+    
+    def update_ai_config(self, **kwargs):
+        """更新AI配置"""
+        for key, value in kwargs.items():
+            if hasattr(self.config.ai, key):
+                setattr(self.config.ai, key, value)
+    
+    def update_web_config(self, **kwargs):
+        """更新Web配置"""
+        for key, value in kwargs.items():
+            if hasattr(self.config.web, key):
+                setattr(self.config.web, key, value)
+    
+    def get_obs_config(self) -> OBSConfig:
+        """獲取OBS配置"""
+        return self.config.obs
+    
+    def get_camera_config(self) -> CameraConfig:
+        """獲取攝影機配置"""
+        return self.config.camera
+    
+    def get_ai_config(self) -> AIConfig:
+        """獲取AI配置"""
+        return self.config.ai
+    
+    def get_web_config(self) -> WebConfig:
+        """獲取Web配置"""
+        return self.config.web
+    
+    def get_log_config(self) -> LogConfig:
+        """獲取日誌配置"""
+        return self.config.log
+    
+    def get_layout_config(self) -> LayoutConfig:
+        """獲取佈局配置"""
+        return self.config.layout
+    
+    def validate_config(self) -> Dict[str, list]:
+        """驗證配置有效性"""
+        errors = {
+            "obs": [],
+            "camera": [],
+            "ai": [],
+            "web": [],
+            "log": [],
+            "layout": []
+        }
+        
+        # 驗證OBS配置
+        if not isinstance(self.config.obs.port, int) or not (1 <= self.config.obs.port <= 65535):
+            errors["obs"].append("端口必須在1-65535範圍內")
+        
+        if not self.config.obs.host:
+            errors["obs"].append("主機地址不能為空")
+        
+        # 驗證攝影機配置
+        if not isinstance(self.config.camera.index, int) or self.config.camera.index < 0:
+            errors["camera"].append("攝影機索引必須為非負整數")
+        
+        if not (320 <= self.config.camera.width <= 3840):
+            errors["camera"].append("解析度寬度必須在320-3840範圍內")
+        
+        if not (240 <= self.config.camera.height <= 2160):
+            errors["camera"].append("解析度高度必須在240-2160範圍內")
+        
+        # 驗證AI配置
+        if not (0.1 <= self.config.ai.emotion_detection_interval <= 10.0):
+            errors["ai"].append("情緒檢測間隔必須在0.1-10.0秒範圍內")
+        
+        if not (1.0 <= self.config.ai.layout_decision_interval <= 60.0):
+            errors["ai"].append("佈局決策間隔必須在1.0-60.0秒範圍內")
+        
+        # 驗證Web配置
+        if not isinstance(self.config.web.port, int) or not (1 <= self.config.web.port <= 65535):
+            errors["web"].append("Web端口必須在1-65535範圍內")
+        
+        # 移除空的錯誤列表
+        return {k: v for k, v in errors.items() if v}
+
+# 全局配置管理器實例
+config_manager = ConfigManager()
+
+def get_config() -> SystemConfig:
+    """獲取系統配置"""
+    return config_manager.config
+
+def save_config():
+    """保存配置"""
+    config_manager.save_config()
+
+def reload_config():
+    """重新載入配置"""
+    config_manager._load_config()
+
+# 便利函數
+def get_obs_config() -> OBSConfig:
+    return config_manager.get_obs_config()
+
+def get_camera_config() -> CameraConfig:
+    return config_manager.get_camera_config()
+
+def get_ai_config() -> AIConfig:
+    return config_manager.get_ai_config()
+
+def get_web_config() -> WebConfig:
+    return config_manager.get_web_config()
+
+def get_layout_config() -> LayoutConfig:
+    return config_manager.get_layout_config()
+
+if __name__ == "__main__":
+    # 測試配置管理器
+    config = get_config()
+    print("OBS配置:", config.obs)
+    print("攝影機配置:", config.camera)
+    print("AI配置:", config.ai)
+    
+    # 驗證配置
+    errors = config_manager.validate_config()
+    if errors:
+        print("配置錯誤:", errors)
+    else:
+        print("✅ 配置驗證通過")
+    
+    # 保存配置示例
+    config_manager.save_config("config.yaml")

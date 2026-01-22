@@ -114,9 +114,13 @@ class ConfigManager:
     def load_config(self, config_file: Optional[str] = None) -> AppConfig:
         """載入配置文件"""
         if config_file is None:
-            # 根據環境變數決定配置文件
-            env = os.getenv("LIVEPILOTAI_ENV", "development")
-            config_file = f"{env}.yml"
+            # Check if current.yml exists first (user saved settings)
+            if (self.config_dir / "current.yml").exists():
+                config_file = "current.yml"
+            else:
+                # 根據環境變數決定配置文件
+                env = os.getenv("LIVEPILOTAI_ENV", "development")
+                config_file = f"{env}.yml"
             
         config_path = self.config_dir / config_file
         

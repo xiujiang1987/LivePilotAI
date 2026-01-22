@@ -25,11 +25,19 @@ import json
 # Import our custom modules
 from ..ai_engine.emotion_detector import EmotionDetector
 from ..ai_engine.modules.camera_manager import CameraManager
+from ..ai_engine.modules.face_tracker import FaceTracker
+from ..ai_engine.modules.visualizer import Visualizer
+from ..ai_engine.modules.emotion_intensity import EmotionIntensityAnalyzer
+from ..ai_engine.modules.gesture_detector import GestureDetector
+from ..ai_engine.modules.style_transfer import StyleTransfer
+from ..ai_engine.modules.audio_controller import AudioController # New
 from ..obs_integration.obs_manager import OBSManager
 from ..obs_integration.emotion_mapper import EmotionMapper, EmotionContext
 from .preview_window import PreviewWindow
 from .settings_dialog import SettingsDialog
-from .status_indicators import StatusIndicators
+from .status_indicators import StatusIndicator, StatusPanel, SystemStatusManager
+from ..utils.i18n import i18n
+from ..core.config_manager import config_manager, save_config, OBSConfig as CoreOBSConfig
 
 
 @dataclass
@@ -38,6 +46,7 @@ class PanelConfig:
     window_title: str = "LivePilotAI - Intelligent Streaming Director"
     window_size: tuple = (1200, 800)
     theme: str = "modern"
+    language: str = "zh_TW"
     auto_start_camera: bool = True
     auto_connect_obs: bool = False
     preview_size: tuple = (320, 240)
@@ -54,17 +63,25 @@ class MainPanel:
         self.logger = logging.getLogger(__name__)
         self.config = config or PanelConfig()
         
+        # Set language from config
+        i18n.set_language(self.config.language)
+        
         # Core components
         self.emotion_detector: Optional[EmotionDetector] = None
         self.camera_manager: Optional[CameraManager] = None
         self.obs_manager: Optional[OBSManager] = None
         self.emotion_mapper: Optional[EmotionMapper] = None
         
+        # New components for Visual Upgrade
+        self.face_tracker: Optional[FaceTracker] = None
+        self.visualizer: Optional[Visualizer] = None
+        self.analyzers: Dict[int, EmotionIntensityAnalyzer] = {}
+
         # UI components
         self.root: Optional[tk.Tk] = None
         self.preview_window: Optional[PreviewWindow] = None
         self.settings_dialog: Optional[SettingsDialog] = None
-        self.status_indicators: Optional[StatusIndicators] = None
+        self.status_indicators: Optional[SystemStatusManager] = None
         
         # UI elements
         self.main_frame: Optional[ttk.Frame] = None
@@ -86,6 +103,7 @@ class MainPanel:
         self.emotion_history: List[Dict[str, Any]] = []
         self.scene_switches: List[Dict[str, Any]] = []
         self.performance_metrics: Dict[str, float] = {}
+        self.last_logged_emotion: Optional[str] = None
         
         # Threading
         self.update_thread: Optional[threading.Thread] = None
@@ -116,8 +134,36 @@ class MainPanel:
             self.camera_manager = CameraManager()
             self.emotion_mapper = EmotionMapper()
             
-            # Initialize OBS manager
-            self.obs_manager = OBSManager()
+            # Initialize new visual components
+            self.face_tracker = FaceTracker()
+            self.visualizer = Visualizer()
+            self.gesture_detector = GestureDetector()
+            self.style_transfer = StyleTransfer()
+            self.audio_controller = AudioController() # New
+            self.analyzers = {}
+            
+            # Shared data for preview window
+            self.latest_results = []
+            
+            # Initialize OBS manager with config
+            app_config = config_manager.get_config()
+            
+            # Create OBS config from app config
+            # Note: We need to map between CoreOBSConfig and the one expected by OBSManager if they differ
+            # But since OBSManager expects an object with host, port, password, we can pass a compatible object
+            # or update OBSManager to accept CoreOBSConfig.
+            # For now, let's assume OBSManager's config is compatible or we pass the values.
+            
+            from ..obs_integration.obs_manager import OBSConfig as IntegrationOBSConfig
+            obs_config = IntegrationOBSConfig(
+                host=app_config.obs.websocket_host,
+                port=app_config.obs.websocket_port,
+                password=app_config.obs.websocket_password,
+                auto_reconnect=app_config.obs.auto_connect,
+                connection_timeout=app_config.obs.timeout
+            )
+            
+            self.obs_manager = OBSManager(config=obs_config)
             
             self.logger.info("Core components initialized successfully")
             
@@ -125,14 +171,18 @@ class MainPanel:
             self.logger.error(f"Error initializing components: {e}")
             messagebox.showerror("Initialization Error", f"Failed to initialize components: {e}")
     
-    def setup_ui(self) -> None:
+    def setup_ui(self, parent=None) -> None:
         """Setup the main user interface"""
         try:
             # Create main window
-            self.root = tk.Tk()
-            self.root.title(self.config.window_title)
-            self.root.geometry(f"{self.config.window_size[0]}x{self.config.window_size[1]}")
-            self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+            if parent:
+                self.root = parent
+                # If parent is provided, we assume it's already configured
+            else:
+                self.root = tk.Tk()
+                self.root.title(self.config.window_title)
+                self.root.geometry(f"{self.config.window_size[0]}x{self.config.window_size[1]}")
+                self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # Apply theme
             self._apply_theme()
@@ -146,7 +196,7 @@ class MainPanel:
             self._create_info_panel()
             
             # Initialize status indicators
-            self.status_indicators = StatusIndicators(self.status_frame)
+            self.status_indicators = SystemStatusManager()
             
             # Bind events
             self._bind_events()
@@ -210,61 +260,70 @@ class MainPanel:
         self.main_frame.rowconfigure(1, weight=1)
         
         # Create main sections
-        self.control_frame = ttk.LabelFrame(self.main_frame, text="Controls", padding="10")
+        self.control_frame = ttk.LabelFrame(self.main_frame, text=i18n.get("camera_control"), padding="10")
         self.control_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        self.preview_frame = ttk.LabelFrame(self.main_frame, text="Live Preview", padding="10")
+        self.preview_frame = ttk.LabelFrame(self.main_frame, text=i18n.get("preview"), padding="10")
         self.preview_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
         
-        self.info_frame = ttk.LabelFrame(self.main_frame, text="System Info", padding="10")
+        self.info_frame = ttk.LabelFrame(self.main_frame, text=i18n.get("info"), padding="10")
         self.info_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        self.status_frame = ttk.LabelFrame(self.main_frame, text="Status", padding="5")
+        self.status_frame = ttk.LabelFrame(self.main_frame, text=i18n.get("obs_status"), padding="5")
         self.status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
     
     def _create_menu_bar(self) -> None:
         """Create the menu bar"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
+        # Check if root is a Tk instance or Toplevel, otherwise we can't set menu directly easily
+        # if it's a Frame. But let's try to find the top level window.
+        top_level = self.root.winfo_toplevel()
+        
+        menubar = tk.Menu(top_level)
+        top_level.config(menu=menubar)
         
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Save Configuration", command=self.save_configuration)
-        file_menu.add_command(label="Load Configuration", command=self.load_configuration)
+        file_menu.add_command(label=i18n.get("save"), command=self.save_configuration)
+        file_menu.add_command(label=i18n.get("load"), command=self.load_configuration)
         file_menu.add_separator()
-        file_menu.add_command(label="Export Data", command=self.export_data)
+        file_menu.add_command(label=i18n.get("export"), command=self.export_data)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.on_closing)
+        file_menu.add_command(label=i18n.get("close"), command=self.on_closing)
         
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Preview Window", command=self.open_preview_window)
-        view_menu.add_command(label="Emotion History", command=self.show_emotion_history)
-        view_menu.add_command(label="Performance Metrics", command=self.show_performance_metrics)
+        view_menu.add_command(label=i18n.get("preview"), command=self.open_preview_window)
+        view_menu.add_command(label=i18n.get("history"), command=self.show_emotion_history)
+        view_menu.add_command(label=i18n.get("performance"), command=self.show_performance_metrics)
         
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
-        tools_menu.add_command(label="Settings", command=self.open_settings)
-        tools_menu.add_command(label="OBS Scene Manager", command=self.open_scene_manager)
-        tools_menu.add_command(label="Emotion Mapper Config", command=self.open_emotion_config)
+        tools_menu.add_command(label=i18n.get("settings"), command=self.open_settings)
+        tools_menu.add_command(label=i18n.get("obs_scene_manager"), command=self.open_scene_manager)
+        tools_menu.add_command(label=i18n.get("emotion_mapper"), command=self.open_emotion_config)
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
+        menubar.add_cascade(label=i18n.get("help"), menu=help_menu)
+        help_menu.add_command(label=i18n.get("obs_guide"), command=self.show_obs_help)
+        help_menu.add_command(label=i18n.get("about"), command=self.show_about)
+
+    def show_obs_help(self) -> None:
+        """Show OBS connection help"""
+        messagebox.showinfo(i18n.get("obs_guide"), i18n.get("obs_guide_content"))
         help_menu.add_command(label="Documentation", command=self.show_documentation)
     
     def _create_control_panel(self) -> None:
         """Create the main control panel"""
         # Camera controls
-        camera_frame = ttk.LabelFrame(self.control_frame, text="Camera", padding="5")
+        camera_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("camera_control"), padding="5")
         camera_frame.grid(row=0, column=0, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
         
         self.camera_button = ttk.Button(
-            camera_frame, text="Start Camera", 
+            camera_frame, text=i18n.get("start_camera"), 
             command=self.toggle_camera
         )
         self.camera_button.grid(row=0, column=0, pady=2)
@@ -273,17 +332,17 @@ class MainPanel:
         self.camera_status.grid(row=0, column=1, padx=(10, 0))
         
         # Camera selection
-        ttk.Label(camera_frame, text="Device:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Label(camera_frame, text=i18n.get("device")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
         self.camera_combo = ttk.Combobox(camera_frame, width=15, state="readonly")
         self.camera_combo.grid(row=1, column=1, pady=(5, 0))
         self.refresh_cameras()
         
         # OBS controls  
-        obs_frame = ttk.LabelFrame(self.control_frame, text="OBS Studio", padding="5")
+        obs_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("obs_control"), padding="5")
         obs_frame.grid(row=0, column=1, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
         
         self.obs_button = ttk.Button(
-            obs_frame, text="Connect OBS",
+            obs_frame, text=i18n.get("connect_obs"),
             command=self.toggle_obs_connection
         )
         self.obs_button.grid(row=0, column=0, pady=2)
@@ -292,26 +351,51 @@ class MainPanel:
         self.obs_status.grid(row=0, column=1, padx=(10, 0))
         
         # Scene controls
-        ttk.Label(obs_frame, text="Current Scene:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Label(obs_frame, text=i18n.get("current_scene")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
         scene_label = ttk.Label(obs_frame, textvariable=self.current_scene, font=("", 9, "bold"))
         scene_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
         
         # Auto-switching controls
-        auto_frame = ttk.LabelFrame(self.control_frame, text="Auto Switching", padding="5")
+        auto_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("auto_switch"), padding="5")
         auto_frame.grid(row=0, column=2, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
         
         self.auto_switch_button = ttk.Button(
-            auto_frame, text="Enable Auto Switch",
+            auto_frame, text=i18n.get("enable_auto"),
             command=self.toggle_auto_switching
         )
         self.auto_switch_button.grid(row=0, column=0, pady=2)
         
         self.auto_status = ttk.Label(auto_frame, text="●", foreground="red")
         self.auto_status.grid(row=0, column=1, padx=(10, 0))
+
+        # Filter Control (New)
+        filter_frame = ttk.LabelFrame(self.control_frame, text="Art Filter", padding="5")
+        filter_frame.grid(row=0, column=3, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
         
+        self.filter_var = tk.StringVar(value="none")
+        self.filter_combo = ttk.Combobox(filter_frame, textvariable=self.filter_var, width=10, state="readonly")
+        self.filter_combo['values'] = self.style_transfer.get_available_styles()
+        self.filter_combo.grid(row=0, column=0, pady=2)
+        
+        # Voice Control (New)
+        voice_frame = ttk.LabelFrame(self.control_frame, text="Voice Control", padding="5")
+        voice_frame.grid(row=0, column=4, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
+        
+        self.voice_button = ttk.Button(
+            voice_frame, text="Start Listen",
+            command=self.toggle_voice_control
+        )
+        self.voice_button.grid(row=0, column=0, pady=2)
+        
+        self.voice_status = ttk.Label(voice_frame, text="●", foreground="red")
+        self.voice_status.grid(row=0, column=1, padx=(10, 0))
+
+        self.last_cmd_label = ttk.Label(voice_frame, text="-", font=("", 8))
+        self.last_cmd_label.grid(row=1, column=0, columnspan=2, sticky=tk.W)
+
         # Emotion display
-        emotion_frame = ttk.LabelFrame(self.control_frame, text="Current Emotion", padding="5")
-        emotion_frame.grid(row=0, column=3, sticky=(tk.W, tk.E, tk.N))
+        emotion_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("current_emotion"), padding="5")
+        emotion_frame.grid(row=0, column=4, sticky=(tk.W, tk.E, tk.N)) # Shifted column index
         
         emotion_display = ttk.Label(
             emotion_frame, textvariable=self.current_emotion,
@@ -326,7 +410,7 @@ class MainPanel:
         )
         self.confidence_progress.grid(row=1, column=0, pady=(5, 0))
         
-        confidence_label = ttk.Label(emotion_frame, text="Confidence")
+        confidence_label = ttk.Label(emotion_frame, text=i18n.get("confidence"))
         confidence_label.grid(row=2, column=0)
     
     def _create_preview_area(self) -> None:
@@ -345,12 +429,12 @@ class MainPanel:
         preview_controls.pack(fill=tk.X, pady=(10, 0))
         
         ttk.Button(
-            preview_controls, text="Full Window",
+            preview_controls, text=i18n.get("full_window"),
             command=self.open_preview_window
         ).pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Button(
-            preview_controls, text="Snapshot",
+            preview_controls, text=i18n.get("snapshot"),
             command=self.take_snapshot
         ).pack(side=tk.LEFT, padx=(0, 5))
         
@@ -362,7 +446,7 @@ class MainPanel:
         self.preview_canvas.create_text(
             self.config.preview_size[0]//2, 
             self.config.preview_size[1]//2,
-            text="No Video Feed", fill="white", font=("", 12)
+            text=i18n.get("no_video_feed"), fill="white", font=("", 12)
         )
     
     def _create_status_area(self) -> None:
@@ -378,7 +462,7 @@ class MainPanel:
         
         # Emotion History tab
         emotion_tab = ttk.Frame(info_notebook)
-        info_notebook.add(emotion_tab, text="Emotions")
+        info_notebook.add(emotion_tab, text=i18n.get("emotions"))
         
         self.emotion_listbox = tk.Listbox(emotion_tab, height=8)
         self.emotion_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -390,7 +474,7 @@ class MainPanel:
         
         # Scene History tab
         scene_tab = ttk.Frame(info_notebook)
-        info_notebook.add(scene_tab, text="Scenes")
+        info_notebook.add(scene_tab, text=i18n.get("history"))
         
         self.scene_listbox = tk.Listbox(scene_tab, height=8)
         self.scene_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -402,7 +486,7 @@ class MainPanel:
         
         # Performance tab
         perf_tab = ttk.Frame(info_notebook)
-        info_notebook.add(perf_tab, text="Performance")
+        info_notebook.add(perf_tab, text=i18n.get("performance"))
         
         self.perf_text = tk.Text(perf_tab, height=8, width=30)
         self.perf_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -437,7 +521,7 @@ class MainPanel:
                         self.emotion_detector.start()
                         
                         self.camera_running.set(True)
-                        self.camera_button.config(text="Stop Camera")
+                        self.camera_button.config(text=i18n.get("stop_camera"))
                         self.camera_status.config(foreground="green")
                         
                         # Start processing thread
@@ -447,13 +531,13 @@ class MainPanel:
                         
                         self.logger.info("Camera and emotion detection started")
                     else:
-                        messagebox.showerror("Camera Error", "Failed to start camera")
+                        messagebox.showerror(i18n.get("camera_error"), i18n.get("start_camera_error"))
                 else:
-                    messagebox.showwarning("Camera Warning", "Please select a camera device")
+                    messagebox.showwarning(i18n.get("camera_warning"), i18n.get("select_camera_msg"))
                     
         except Exception as e:
             self.logger.error(f"Error starting camera: {e}")
-            messagebox.showerror("Camera Error", f"Failed to start camera: {e}")
+            messagebox.showerror(i18n.get("camera_error"), f"{i18n.get('start_camera_error')}: {e}")
     
     def stop_camera(self) -> None:
         """Stop the camera and emotion detection"""
@@ -471,7 +555,7 @@ class MainPanel:
                     self.camera_manager.stop_camera()
                 
                 self.camera_running.set(False)
-                self.camera_button.config(text="Start Camera")
+                self.camera_button.config(text=i18n.get("start_camera"))
                 self.camera_status.config(foreground="red")
                 
                 # Clear preview
@@ -479,7 +563,7 @@ class MainPanel:
                 self.preview_canvas.create_text(
                     self.config.preview_size[0]//2,
                     self.config.preview_size[1]//2,
-                    text="No Video Feed", fill="white", font=("", 12)
+                    text=i18n.get("no_video_feed"), fill="white", font=("", 12)
                 )
                 
                 self.logger.info("Camera and emotion detection stopped")
@@ -506,13 +590,23 @@ class MainPanel:
                     success = loop.run_until_complete(self.obs_manager.connect())
                     
                     # Update UI in main thread
-                    self.root.after(0, lambda: self._update_obs_status(success))
+                    def update_ui():
+                        self._update_obs_status(success)
+                        if not success:
+                            # Get error message
+                            error_msg = self.obs_manager.stats.get('last_error', 'Unknown error')
+                            messagebox.showerror(
+                                i18n.get("obs_error"), 
+                                f"{i18n.get('obs_connect_error_msg')}\n{error_msg}"
+                            )
+                    
+                    self.root.after(0, update_ui)
                 
                 threading.Thread(target=connect_async, daemon=True).start()
                 
         except Exception as e:
             self.logger.error(f"Error connecting to OBS: {e}")
-            messagebox.showerror("OBS Error", f"Failed to connect to OBS: {e}")
+            messagebox.showerror(i18n.get("obs_error"), f"{i18n.get('obs_connect_error_msg')}: {e}")
     
     def disconnect_obs(self) -> None:
         """Disconnect from OBS Studio"""
@@ -536,13 +630,13 @@ class MainPanel:
         """Update OBS connection status in UI"""
         self.obs_connected.set(connected)
         if connected:
-            self.obs_button.config(text="Disconnect OBS")
+            self.obs_button.config(text=i18n.get("disconnect_obs"))
             self.obs_status.config(foreground="green")
             self.logger.info("OBS connected successfully")
         else:
-            self.obs_button.config(text="Connect OBS")
+            self.obs_button.config(text=i18n.get("connect_obs"))
             self.obs_status.config(foreground="red")
-            self.current_scene.set("No Scene")
+            self.current_scene.set(i18n.get("no_scene"))
     
     def toggle_obs_connection(self) -> None:
         """Toggle OBS connection"""
@@ -555,16 +649,71 @@ class MainPanel:
         """Toggle automatic scene switching"""
         if self.auto_switching.get():
             self.auto_switching.set(False)
-            self.auto_switch_button.config(text="Enable Auto Switch")
+            self.auto_switch_button.config(text=i18n.get("enable_auto"))
             self.auto_status.config(foreground="red")
         else:
             if self.obs_connected.get():
                 self.auto_switching.set(True)
-                self.auto_switch_button.config(text="Disable Auto Switch")
+                self.auto_switch_button.config(text=i18n.get("disable_auto"))
                 self.auto_status.config(foreground="green")
             else:
-                messagebox.showwarning("Auto Switch", "Please connect to OBS first")
+                messagebox.showwarning(i18n.get("auto_switch_warning_title"), i18n.get("auto_switch_warning_msg"))
     
+    def toggle_voice_control(self) -> None:
+        """Toggle voice control system"""
+        if self.audio_controller.is_listening:
+            self.audio_controller.stop_listening()
+            self.voice_button.config(text="Start Listen")
+            self.voice_status.config(foreground="red")
+        else:
+            # First time init check
+            if not self.audio_controller.microphone:
+                self.voice_button.config(state="disabled", text="Init...")
+                
+                def init_thread():
+                    ok = self.audio_controller.initialize()
+                    
+                    def on_init_done(success):
+                        self.voice_button.config(state="normal")
+                        if success:
+                            # Set callback
+                            self.audio_controller.callback = self._handle_voice_command
+                            # Start
+                            self.audio_controller.start_listening()
+                            self.voice_button.config(text="Stop Listen")
+                            self.voice_status.config(foreground="green")
+                        else:
+                            messagebox.showerror("Error", "No microphone found")
+                            self.voice_button.config(text="Start Listen")
+                    
+                    self.root.after(0, lambda: on_init_done(ok))
+                    
+                threading.Thread(target=init_thread, daemon=True).start()
+            else:
+                self.audio_controller.callback = self._handle_voice_command
+                self.audio_controller.start_listening()
+                self.voice_button.config(text="Stop Listen")
+                self.voice_status.config(foreground="green")
+
+    def _handle_voice_command(self, cmd: str) -> None:
+        """Handle incoming voice commands"""
+        def update_ui_cmd(c):
+             # Update label with timestamp
+             ts = time.strftime("%H:%M:%S")
+             self.last_cmd_label.config(text=f"[{ts}] {c}")
+             
+             # Execute logic
+             self.logger.info(f"Voice Command Executed: {c}")
+             
+             if c == "start":
+                 if not self.auto_switching.get():
+                     self.toggle_auto_switching()
+             elif c == "stop":
+                 if self.auto_switching.get():
+                     self.toggle_auto_switching()
+        
+        self.root.after(0, lambda: update_ui_cmd(cmd))
+
     def processing_loop(self) -> None:
         """Main processing loop for camera and emotion detection"""
         fps_counter = 0
@@ -578,11 +727,56 @@ class MainPanel:
                     # Detect emotions
                     results = self.emotion_detector.detect_emotions(frame)
                     
+                    # --- Advanced Processing Logic (Face Tracking & Intensity) ---
+                    annotated_frame = frame.copy()
+                    
                     if results:
-                        # Get dominant emotion
-                        dominant = results[0]  # Assuming first result is dominant
-                        emotion = dominant['emotion']
-                        confidence = dominant['confidence']
+                        # 1. Update tracker with current detections
+                        rects = [res['bbox'] for res in results if 'bbox' in res]
+                        tracked_objects = self.face_tracker.update(rects)
+                        
+                        # 2. Enrich results with ID and Intensity
+                        for res in results:
+                            bbox = res.get('bbox')
+                            if not bbox: continue
+                                
+                            # Find matching ID (Distance based)
+                            cx, cy = bbox[0] + bbox[2]//2, bbox[1] + bbox[3]//2
+                            best_id = None
+                            min_dist = float('inf')
+                            
+                            for fid, tracked_obj in tracked_objects.items():
+                                t_cx, t_cy = tracked_obj.centroid
+                                dist_val = ((cx-t_cx)**2 + (cy-t_cy)**2)**0.5
+                                if dist_val < 50: # Threshold
+                                    if dist_val < min_dist:
+                                        min_dist = dist_val
+                                        best_id = fid
+                            
+                            if best_id is not None:
+                                res['face_id'] = best_id
+                                
+                                # Intensity Analysis
+                                if best_id not in self.analyzers:
+                                    self.analyzers[best_id] = EmotionIntensityAnalyzer()
+                                
+                                emotions_dist = res.get('emotions', {})
+                                if not emotions_dist and 'emotion' in res:
+                                    emotions_dist = {res['emotion']: res['confidence']}
+                                    
+                                dynamics = self.analyzers[best_id].analyze(emotions_dist)
+                                res['intensity'] = dynamics.intensity
+                        
+                        # 3. Visualization
+                        annotated_frame = self.visualizer.draw_detections(frame, results)
+                        
+                        # Update self.latest_results for other components
+                        self.latest_results = results
+
+                        # Get dominant emotion for UI stats (using first face)
+                        dominant = results[0]
+                        emotion = dominant.get('dominant_emotion') or dominant.get('emotion')
+                        confidence = dominant.get('confidence', 0.0)
                         
                         # Update UI variables
                         self.root.after(0, lambda: self._update_emotion_display(emotion, confidence))
@@ -591,8 +785,29 @@ class MainPanel:
                         if self.auto_switching.get() and self.obs_connected.get():
                             self._handle_auto_switching(emotion, confidence, frame)
                     
-                    # Update preview
-                    self.root.after(0, lambda: self._update_preview(frame))
+                    # --- Gesture Detection ---
+                    gestures = self.gesture_detector.detect(frame)
+                    if gestures:
+                         annotated_frame = self.visualizer.draw_gestures(annotated_frame, gestures)
+                         
+                         # Handle Gesture Actions
+                         for ges in gestures:
+                             g_name = ges['gesture']
+                             if g_name == "Thumbs_Up":
+                                 # Action: Log for now
+                                 self.logger.info("Gesture Detected: Thumbs Up")
+                             elif g_name == "Open_Palm":
+                                 self.logger.info("Gesture Detected: Open Palm")
+                             elif g_name == "OK":
+                                 self.logger.info("Gesture Detected: OK")
+
+                    # --- Style Transfer ---
+                    current_style = self.filter_var.get()
+                    if current_style != "none":
+                        annotated_frame = self.style_transfer.apply_style(annotated_frame, current_style)
+
+                    # Update preview with VISUALIZED frame
+                    self.root.after(0, lambda: self._update_preview(annotated_frame))
                     
                     # Calculate FPS
                     fps_counter += 1
@@ -610,23 +825,29 @@ class MainPanel:
     
     def _update_emotion_display(self, emotion: str, confidence: float) -> None:
         """Update emotion display in UI"""
-        self.current_emotion.set(emotion.title())
+        # Translate emotion
+        translated_emotion = i18n.get(emotion, emotion.title())
+        self.current_emotion.set(translated_emotion)
         self.emotion_confidence.set(confidence)
         
-        # Add to history
-        timestamp = time.strftime("%H:%M:%S")
-        entry = f"{timestamp} - {emotion.title()} ({confidence:.2f})"
-        
-        self.emotion_listbox.insert(0, entry)
-        if self.emotion_listbox.size() > 50:  # Limit history size
-            self.emotion_listbox.delete(50)
-        
-        # Store in data
-        self.emotion_history.append({
-            'timestamp': time.time(),
-            'emotion': emotion,
-            'confidence': confidence
-        })
+        # Only add to history if emotion changed
+        if emotion != self.last_logged_emotion:
+            # Add to history
+            timestamp = time.strftime("%H:%M:%S")
+            entry = f"{timestamp} - {translated_emotion} ({confidence:.2f})"
+            
+            self.emotion_listbox.insert(0, entry)
+            if self.emotion_listbox.size() > 50:  # Limit history size
+                self.emotion_listbox.delete(50)
+            
+            # Store in data
+            self.emotion_history.append({
+                'timestamp': time.time(),
+                'emotion': emotion,
+                'confidence': confidence
+            })
+            
+            self.last_logged_emotion = emotion
     
     def _update_preview(self, frame) -> None:
         """Update preview canvas with current frame"""
@@ -724,7 +945,7 @@ class MainPanel:
         """Refresh available camera devices"""
         try:
             devices = self.camera_manager.get_available_cameras()
-            camera_names = [f"Camera {i}: {name}" for i, name in enumerate(devices)]
+            camera_names = [f"{i18n.get('camera')} {i}: {name}" for i, name in enumerate(devices)]
             
             self.camera_combo['values'] = camera_names
             if camera_names:
@@ -771,8 +992,86 @@ class MainPanel:
     
     def open_settings(self) -> None:
         """Open settings dialog"""
-        if not self.settings_dialog or not self.settings_dialog.root.winfo_exists():
-            self.settings_dialog = SettingsDialog(self)
+        app_config = config_manager.get_config()
+        
+        # Create settings dictionary from current config
+        current_settings = {
+            'obs': {
+                'host': app_config.obs.websocket_host,
+                'port': app_config.obs.websocket_port,
+                'password': app_config.obs.websocket_password,
+                'auto_connect': app_config.obs.auto_connect,
+                'reconnect_interval': 5,
+                'timeout': app_config.obs.timeout
+            },
+            'emotion': {
+                'confidence_threshold': app_config.ai_models.confidence_threshold,
+                'update_interval': self.config.update_interval,
+                'smoothing_factor': 0.3,
+                'min_face_size': 30,
+                'max_faces': 5
+            },
+            'scene_switching': {
+                'enable_auto_switch': self.auto_switching.get(),
+                'switch_cooldown': 2.0,
+                'transition_duration': 1000,
+                'confidence_required': 0.8,
+                'sustained_duration': 1.0
+            },
+            'ui': {
+                'theme': self.config.theme,
+                'language': i18n.current_language,
+                'update_fps': 30,
+                'show_confidence': True,
+                'show_fps': True,
+                'emotion_colors': {}
+            },
+            'performance': {
+                'max_cpu_usage': 80,
+                'memory_limit_mb': 512,
+                'gpu_acceleration': True,
+                'threading_enabled': True,
+                'cache_size': 100
+            }
+        }
+        
+        def on_save(new_settings):
+            # Update AppConfig
+            app_config.obs.websocket_host = new_settings['obs']['host']
+            app_config.obs.websocket_port = new_settings['obs']['port']
+            app_config.obs.websocket_password = new_settings['obs']['password']
+            app_config.obs.auto_connect = new_settings['obs']['auto_connect']
+            app_config.obs.timeout = new_settings['obs']['timeout']
+            
+            app_config.ai_models.confidence_threshold = new_settings['emotion']['confidence_threshold']
+            
+            # Save to file
+            if save_config(app_config):
+                self.logger.info("Configuration saved to file")
+            else:
+                self.logger.error("Failed to save configuration to file")
+            
+            # Update runtime components
+            if self.obs_manager:
+                self.obs_manager.config.host = new_settings['obs']['host']
+                self.obs_manager.config.port = new_settings['obs']['port']
+                self.obs_manager.config.password = new_settings['obs']['password']
+            
+            # Apply new settings
+            self.config.theme = new_settings['ui']['theme']
+            self._apply_theme()
+            
+            # Apply language
+            if 'language' in new_settings['ui']:
+                if i18n.set_language(new_settings['ui']['language']):
+                    # Update config language
+                    self.config.language = new_settings['ui']['language']
+                    messagebox.showinfo(i18n.get("language_changed"), i18n.get("restart_required"))
+            
+            self.logger.info("Settings updated")
+        
+        self.settings_dialog = SettingsDialog(self.root, current_settings, on_save)
+        self.settings_dialog.show()
     
     def take_snapshot(self) -> None:
         """Take a snapshot of current frame"""
@@ -813,7 +1112,8 @@ class MainPanel:
                 'ui_settings': {
                     'window_size': self.config.window_size,
                     'theme': self.config.theme,
-                    'preview_size': self.config.preview_size
+                    'preview_size': self.config.preview_size,
+                    'language': i18n.current_language
                 },
                 'auto_switching': {
                     'enabled': self.auto_switching.get()
@@ -835,7 +1135,7 @@ class MainPanel:
                 with open(filepath, 'w') as f:
                     json.dump(config, f, indent=2)
                 
-                messagebox.showinfo("Configuration", f"Configuration saved to {filepath}")
+                messagebox.showinfo("Configuration", i18n.get("save_success"))
                 
         except Exception as e:
             self.logger.error(f"Error saving configuration: {e}")
@@ -853,7 +1153,10 @@ class MainPanel:
                     config = json.load(f)
                 
                 # Apply configuration
-                # This would update UI elements and settings
+                if 'ui_settings' in config and 'language' in config['ui_settings']:
+                    i18n.set_language(config['ui_settings']['language'])
+                    # Note: Full UI refresh might be needed for language change to take effect immediately
+                
                 messagebox.showinfo("Configuration", f"Configuration loaded from {filepath}")
                 
         except Exception as e:
@@ -941,6 +1244,10 @@ Features:
                 # Stop all operations
                 self.running = False
                 
+                # Stop Audio
+                if hasattr(self, 'audio_controller'):
+                    self.audio_controller.stop_listening()
+
                 if self.camera_running.get():
                     self.stop_camera()
                 

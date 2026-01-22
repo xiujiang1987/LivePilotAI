@@ -141,26 +141,39 @@ class WebSocketClient:
             
             try:
                 self._change_state(ClientState.CONNECTING)
-                self.logger.info(f"Connecting to {self.connection_url}")
-                
-                # Prepare connection parameters
+                self.logger.info(f"Connecting to {self.connection_url}")                # Prepare connection parameters  
                 extra_headers = {}
                 if self.config.password:
                     extra_headers["Authorization"] = f"Bearer {self.config.password}"
-                
-                # Establish WebSocket connection
-                self.websocket = await asyncio.wait_for(
-                    websockets.connect(
-                        self.connection_url,
-                        extra_headers=extra_headers,
-                        ssl=self.config.ssl_context if self.config.use_ssl else None,
-                        max_size=self.config.max_message_size,
-                        compression=self.config.compression,
-                        ping_interval=None,  # We handle heartbeat manually
-                        ping_timeout=None
-                    ),
-                    timeout=self.config.connect_timeout
-                )
+                  # Establish WebSocket connection with version compatibility
+                try:
+                    # Try new parameter name first (websockets >= 12.0)
+                    self.websocket = await asyncio.wait_for(
+                        websockets.connect(
+                            self.connection_url,
+                            extra_headers=extra_headers,
+                            ssl=self.config.ssl_context if self.config.use_ssl else None,
+                            max_size=self.config.max_message_size,
+                            compression=self.config.compression,
+                            ping_interval=None,  # We handle heartbeat manually
+                            ping_timeout=None
+                        ),
+                        timeout=self.config.connect_timeout
+                    )
+                except TypeError:
+                    # Fall back to old parameter name (websockets < 12.0)
+                    self.websocket = await asyncio.wait_for(
+                        websockets.connect(
+                            self.connection_url,
+                            extra_headers=extra_headers,
+                            ssl=self.config.ssl_context if self.config.use_ssl else None,
+                            max_size=self.config.max_message_size,
+                            compression=self.config.compression,
+                            ping_interval=None,  # We handle heartbeat manually
+                            ping_timeout=None
+                        ),
+                        timeout=self.config.connect_timeout
+                    )
                 
                 # Update statistics
                 self.stats.connect_time = time.time()

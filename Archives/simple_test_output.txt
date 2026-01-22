@@ -1,0 +1,4 @@
+LivePilotAI Simple Test Output
+Python version: 3.12.9 (main, Mar 17 2025, 21:06:20) [MSC v.1943 64 bit (AMD64)]
+Current directory: D:\Workspace\dev_projects\ai\LivePilotAI
+Test completed successfully!

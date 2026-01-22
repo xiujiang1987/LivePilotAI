@@ -32,11 +32,12 @@ sys.path.insert(0, str(src_path))
 
 try:    # Import UI components
     from src.ui import (
-        MainControlPanel, PreviewWindow, show_settings_dialog,
+        PreviewWindow, show_settings_dialog,
         SystemStatusManager, create_obs_status_panel, 
         create_ai_status_panel, create_system_status_panel,
         StatusLevel
     )
+    from src.ui.main_panel import MainPanel
     
     # Import OBS integration
     from src.obs_integration.obs_manager import OBSManager
@@ -96,7 +97,17 @@ class LivePilotAIApp:
         self.preview_thread = None
         self.emotion_thread = None
         
+        # UI State variables (initialized in create_gui)
+        self.camera_running = None
+        
         logger.info("LivePilotAI Day 5 Application initialized")
+    
+    def _safe_update_status(self, panel: str, component: str, level, message: str):
+        """Safely update component status if status manager is available"""
+        if self.status_manager:
+            self.status_manager.update_component_status(panel, component, level, message)
+        else:
+            logger.warning(f"Status update skipped (no status manager): {panel}.{component} = {level.name}: {message}")
     
     def _load_default_settings(self) -> Dict[str, Any]:
         """Load default application settings"""
@@ -161,8 +172,7 @@ class LivePilotAIApp:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     loaded_settings = json.load(f)
-                
-                # Merge with defaults
+                  # Merge with defaults
                 self._merge_settings(self.settings, loaded_settings)
                 logger.info(f"Settings loaded from {self.config_file}")
             else:
@@ -194,6 +204,9 @@ class LivePilotAIApp:
     
     def create_gui(self):
         """Create the main GUI application"""
+        if self.root is not None:
+            return  # GUI already created
+            
         self.root = tk.Tk()
         self.root.title("LivePilotAI - Intelligent Streaming Director")
         
@@ -206,13 +219,15 @@ class LivePilotAIApp:
         self.root.minsize(800, 600)
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
         
+        # Initialize UI variables
+        self.camera_running = tk.BooleanVar(value=False)
+        
         # Create menu bar
         self._create_menu_bar()
         
         # Create main layout
         self._create_main_layout()
-        
-        # Set window icon (if available)
+          # Set window icon (if available)
         try:
             icon_path = "assets/icon.ico"
             if os.path.exists(icon_path):
@@ -224,6 +239,10 @@ class LivePilotAIApp:
     
     def _create_menu_bar(self):
         """Create the application menu bar"""
+        if not self.root:
+            logger.error("Cannot create menu bar: root window not initialized")
+            return
+            
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
@@ -258,30 +277,55 @@ class LivePilotAIApp:
     
     def _create_main_layout(self):
         """Create the main application layout"""
+        if not self.root:
+            logger.error("Cannot create layout: root window not initialized")
+            return
+            
         # Configure main grid
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         
         # Create main container
         main_container = ttk.Frame(self.root)
-        main_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        main_container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         main_container.columnconfigure(0, weight=3)
         main_container.columnconfigure(1, weight=1)
         main_container.rowconfigure(0, weight=1)
-          # Create main control panel
-        from src.ui.main_panel import PanelConfig
-        panel_config = PanelConfig(
-            window_title="LivePilotAI - Intelligent Streaming Director",
-            window_size=self.settings['app']['window_size'],
-            auto_start_camera=self.settings['app']['auto_start_camera'],
-            auto_connect_obs=self.settings['app']['auto_connect_obs']
-        )
-        self.main_panel = MainControlPanel(panel_config)
-        # Note: MainPanel creates its own root window, so we don't grid it here
+        
+        # Create main control area (simplified, since MainPanel is standalone)
+        control_container = ttk.Frame(main_container)
+        control_container.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # Initialize MainPanel embedded in control_container
+        # We need to adapt MainPanel to work inside a frame if possible, 
+        # but currently it expects a root window. 
+        # For now, we will pass the root window but we might need to refactor MainPanel 
+        # to build inside a specific frame.
+        # Since we modified setup_ui to accept parent, let's try to use it.
+        
+        try:
+            from src.ui.main_panel import PanelConfig
+            # Create a config that matches our settings
+            panel_config = PanelConfig(
+                window_size=self.settings['app']['window_size'],
+                theme=self.settings['ui']['theme'],
+                auto_start_camera=False, # Managed by LivePilotAIApp
+                auto_connect_obs=False   # Managed by LivePilotAIApp
+            )
+            
+            self.main_panel = MainPanel(panel_config)
+            # Pass the container frame as the parent to embed MainPanel
+            self.main_panel.setup_ui(parent=control_container)
+        except Exception as e:
+            logger.error(f"Failed to initialize MainPanel: {e}")
+
+        # Add basic controls here
+        ttk.Label(control_container, text="LivePilotAI Control Center", 
+                 font=("Arial", 16, "bold")).grid(row=0, column=0, pady=10)
         
         # Create status panel container
         status_container = ttk.Frame(main_container)
-        status_container.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        status_container.grid(row=0, column=1, sticky="nsew")
         status_container.columnconfigure(0, weight=1)
         status_container.rowconfigure(0, weight=1)
         status_container.rowconfigure(1, weight=1)
@@ -292,54 +336,43 @@ class LivePilotAIApp:
         
         # OBS Status Panel
         self.obs_status_panel = create_obs_status_panel(status_container, self.status_manager)
-        self.obs_status_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))
+        self.obs_status_panel.grid(row=0, column=0, sticky="nsew", pady=(0, 5))
         
         # AI Engine Status Panel
         self.ai_status_panel = create_ai_status_panel(status_container, self.status_manager)
-        self.ai_status_panel.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))
-        
-        # System Status Panel
+        self.ai_status_panel.grid(row=1, column=0, sticky="nsew", pady=(0, 5))
+          # System Status Panel
         self.system_status_panel = create_system_status_panel(status_container, self.status_manager)
-        self.system_status_panel.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Set up callbacks for main panel
-        self.main_panel.set_callbacks({
-            'start_camera': self._start_camera,
-            'stop_camera': self._stop_camera,
-            'connect_obs': self._connect_obs,
-            'disconnect_obs': self._disconnect_obs,
-            'toggle_auto_switch': self._toggle_auto_switch,
-            'manual_scene_switch': self._manual_scene_switch,
-            'show_preview': self._show_preview_window,
-            'show_settings': self._show_preferences
-        })
+        self.system_status_panel.grid(row=2, column=0, sticky="nsew")
     
     def initialize_components(self):
         """Initialize all core components"""
         try:
             # Initialize camera manager
             self.camera_manager = CameraManager()
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'ai_engine', 'camera', StatusLevel.OFFLINE, "Camera manager initialized"
             )
             
             # Initialize emotion detector
             self.emotion_detector = EmotionDetector()
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'ai_engine', 'emotion_detector', StatusLevel.OFFLINE, "Emotion detector ready"
             )
-              # Initialize face detector
+              
+            # Initialize face detector
             face_detector = FaceDetector()
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'ai_engine', 'face_detector', StatusLevel.OFFLINE, "Face detector ready"
             )
             
             # Initialize real-time detector (includes its own camera manager and components)
             self.real_time_detector = RealTimeEmotionDetector()
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'ai_engine', 'processing', StatusLevel.OFFLINE, "Real-time processor ready"
             )
-              # Initialize OBS components
+              
+            # Initialize OBS components
             from src.obs_integration.obs_manager import OBSConfig
             obs_config = OBSConfig(
                 host=self.settings['obs']['host'],
@@ -347,13 +380,13 @@ class LivePilotAIApp:
                 password=self.settings['obs']['password']
             )
             self.obs_manager = OBSManager(obs_config)
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'obs', 'connection', StatusLevel.OFFLINE, "OBS manager initialized"
             )
             
             # Initialize emotion mapper
             self.emotion_mapper = EmotionMapper()
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'obs', 'scenes', StatusLevel.OFFLINE, "Emotion mapper ready"
             )
             
@@ -374,33 +407,34 @@ class LivePilotAIApp:
             
             # Create GUI
             self.create_gui()
-            
-            # Initialize components
+              # Initialize components
             self.initialize_components()
             
             # Auto-start features if configured
             if self.settings['app']['auto_start_camera']:
-                self.root.after(1000, self._start_camera)
+                if self.root:
+                    self.root.after(1000, self._start_camera)
             
             if self.settings['app']['auto_connect_obs']:
-                self.root.after(2000, self._connect_obs)
+                if self.root:
+                    self.root.after(2000, self._connect_obs)
             
             if self.settings['app']['show_preview_window']:
-                self.root.after(3000, self._show_preview_window)
+                if self.root:
+                    self.root.after(3000, self._show_preview_window)
             
             # Start status monitoring
             self._start_status_monitoring()
             
             self.is_running = True
             logger.info("LivePilotAI Day 5 application started successfully")
-            
-            # Start GUI main loop
-            self.root.mainloop()
+              # Start GUI main loop
+            if self.root:
+                self.root.mainloop()
             
         except Exception as e:
             logger.error(f"Failed to start application: {e}")
             messagebox.showerror("Startup Error", f"Failed to start application: {e}")
-    
     def _start_camera(self):
         """Start camera capture"""
         try:
@@ -409,18 +443,21 @@ class LivePilotAIApp:
             
             success = self.camera_manager.start_camera()
             if success:
-                self.status_manager.update_component_status(
+                self.camera_running.set(True)
+                self._safe_update_status(
                     'ai_engine', 'camera', StatusLevel.ACTIVE, "Camera active"
                 )
                 logger.info("Camera started successfully")
             else:
-                self.status_manager.update_component_status(
+                self.camera_running.set(False)
+                self._safe_update_status(
                     'ai_engine', 'camera', StatusLevel.ERROR, "Failed to start camera"
                 )
                 
         except Exception as e:
+            self.camera_running.set(False)
             logger.error(f"Failed to start camera: {e}")
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'ai_engine', 'camera', StatusLevel.ERROR, f"Camera error: {str(e)}"
             )
     
@@ -429,7 +466,8 @@ class LivePilotAIApp:
         try:
             if self.camera_manager:
                 self.camera_manager.stop_camera()
-                self.status_manager.update_component_status(
+                self.camera_running.set(False)
+                self._safe_update_status(
                     'ai_engine', 'camera', StatusLevel.OFFLINE, "Camera stopped"
                 )
                 logger.info("Camera stopped")
@@ -446,26 +484,26 @@ class LivePilotAIApp:
             # Run connection in separate thread
             def connect_thread():
                 try:
-                    self.status_manager.update_component_status(
+                    self._safe_update_status(
                         'obs', 'connection', StatusLevel.CONNECTING, "Connecting to OBS..."
                     )
                     
-                    success = asyncio.run(self.obs_manager.connect())
+                    success = asyncio.run(self.obs_manager.connect()) if self.obs_manager else False
                     if success:
-                        self.status_manager.update_component_status(
+                        self._safe_update_status(
                             'obs', 'connection', StatusLevel.ONLINE, "Connected to OBS"
                         )
-                        self.status_manager.update_component_status(
+                        self._safe_update_status(
                             'obs', 'websocket', StatusLevel.ACTIVE, "WebSocket active"
                         )
                         logger.info("Connected to OBS successfully")
                     else:
-                        self.status_manager.update_component_status(
+                        self._safe_update_status(
                             'obs', 'connection', StatusLevel.ERROR, "Failed to connect"
                         )
                         
                 except Exception as e:
-                    self.status_manager.update_component_status(
+                    self._safe_update_status(
                         'obs', 'connection', StatusLevel.ERROR, f"Connection error: {str(e)}"
                     )
                     logger.error(f"OBS connection failed: {e}")
@@ -481,12 +519,11 @@ class LivePilotAIApp:
         try:
             if self.obs_manager:
                 asyncio.run(self.obs_manager.disconnect())
-                self.status_manager.update_component_status(
+                self._safe_update_status(
                     'obs', 'connection', StatusLevel.OFFLINE, "Disconnected from OBS"
                 )
-                self.status_manager.update_component_status(
-                    'obs', 'websocket', StatusLevel.OFFLINE, "WebSocket inactive"
-                )
+                self._safe_update_status(
+                    'obs', 'websocket', StatusLevel.OFFLINE, "WebSocket inactive"                )
                 logger.info("Disconnected from OBS")
                 
         except Exception as e:
@@ -497,22 +534,32 @@ class LivePilotAIApp:
         if self.scene_controller:
             self.scene_controller.set_auto_switching(enabled)
             status = "Auto-switching enabled" if enabled else "Auto-switching disabled"
-            self.status_manager.update_component_status(
+            self._safe_update_status(
                 'obs', 'scenes', StatusLevel.ACTIVE if enabled else StatusLevel.ONLINE, status
             )
+        else:
+            logger.warning("Cannot toggle auto-switch: scene controller not initialized")
     
     def _manual_scene_switch(self, scene_name: str):
         """Manually switch to a scene"""
         if self.scene_controller:
-            asyncio.run(self.scene_controller.switch_scene(scene_name, "Manual switch"))
+            asyncio.run(self.scene_controller.switch_to_scene(scene_name, force=True))
     
     def _show_preview_window(self):
         """Show or create preview window"""
+        # Use self as main_panel since we implement the interface
+        
         if not self.preview_window:
-            self.preview_window = PreviewWindow(self.root, self.real_time_detector)
-            self.preview_window.show()
+            # Create preview window with self and default config
+            self.preview_window = PreviewWindow(self)
+            # PreviewWindow is visible by default upon creation
         else:
-            self.preview_window.focus()
+            if hasattr(self.preview_window, 'show'):
+                self.preview_window.show()
+            elif hasattr(self.preview_window, 'root'):
+                self.preview_window.root.deiconify()
+                self.preview_window.root.lift()
+                self.preview_window.root.focus_force()
     
     def _toggle_preview_window(self):
         """Toggle preview window visibility"""
@@ -554,8 +601,7 @@ class LivePilotAIApp:
                 'panel': 'system',
                 'component': 'memory',
                 'level': StatusLevel.ONLINE if memory.percent < 80 else StatusLevel.WARNING,
-                'message': f"Memory: {memory.percent:.1f}%",
-                'details': {'value': memory.percent, 'unit': '%'}
+                'message': f"Memory: {memory.percent:.1f}%",                'details': {'value': memory.percent, 'unit': '%'}
             }
         
         monitor_functions = {
@@ -563,12 +609,12 @@ class LivePilotAIApp:
             'system_memory': monitor_memory
         }
         
-        self.status_manager.start_monitoring(monitor_functions)
+        if self.status_manager:
+            self.status_manager.start_monitoring(monitor_functions)
     
     def _on_status_update(self, panel_name, component_name, level, message, details):
         """Handle status updates"""
         logger.debug(f"Status update: {panel_name}.{component_name} = {level.name}: {message}")
-    
     def _test_obs_connection(self):
         """Test OBS connection"""
         self._connect_obs()
@@ -580,6 +626,9 @@ class LivePilotAIApp:
     def _export_status_report(self):
         """Export system status report"""
         try:
+            if not self.status_manager:
+                raise Exception("Status manager not initialized")
+                
             report = self.status_manager.export_status_report()
             filename = f"livepilotai_status_report_{int(time.time())}.json"
             
@@ -696,9 +745,8 @@ Developed for the 2025 AI Innovation Award"""
             # Disconnect OBS
             if self.obs_manager:
                 asyncio.run(self.obs_manager.disconnect())
-            
-            # Close preview window
-            if self.preview_window:
+              # Close preview window
+            if self.preview_window and hasattr(self.preview_window, 'close'):
                 self.preview_window.close()
             
             self.is_running = False
@@ -708,7 +756,8 @@ Developed for the 2025 AI Innovation Award"""
             logger.error(f"Error during shutdown: {e}")
         
         finally:
-            self.root.destroy()
+            if self.root:
+                self.root.destroy()
 
 
 def main():

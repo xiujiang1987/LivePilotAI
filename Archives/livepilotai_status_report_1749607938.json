@@ -1,0 +1,373 @@
+{
+  "timestamp": 1749607938.2200506,
+  "system_health": {
+    "total_components": 12,
+    "health_score": 25,
+    "status_counts": {
+      "UNKNOWN": 4,
+      "OFFLINE": 4,
+      "ERROR": 1,
+      "WARNING": 0,
+      "CONNECTING": 0,
+      "ONLINE": 2,
+      "ACTIVE": 1
+    },
+    "error_components": [
+      "obs.connection"
+    ],
+    "warning_components": [],
+    "timestamp": 1749607938.2211173
+  },
+  "panels": {
+    "obs": {
+      "title": "OBS Studio",
+      "component_count": 4,
+      "components": {
+        "connection": {
+          "status": "ERROR",
+          "message": "Failed to connect",
+          "timestamp": 1749607920.7054305,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.9736056,
+              "level": "OFFLINE",
+              "message": "OBS manager initialized",
+              "details": null
+            },
+            {
+              "timestamp": 1749607920.6851134,
+              "level": "CONNECTING",
+              "message": "Connecting to OBS...",
+              "details": null
+            },
+            {
+              "timestamp": 1749607920.70746,
+              "level": "ERROR",
+              "message": "Failed to connect",
+              "details": null
+            }
+          ]
+        },
+        "websocket": {
+          "status": "UNKNOWN",
+          "message": "Initializing...",
+          "timestamp": 1749607864.7321463,
+          "details": null,
+          "history": []
+        },
+        "scenes": {
+          "status": "OFFLINE",
+          "message": "Emotion mapper ready",
+          "timestamp": 1749607864.9736056,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.9736056,
+              "level": "OFFLINE",
+              "message": "Emotion mapper ready",
+              "details": null
+            }
+          ]
+        },
+        "sources": {
+          "status": "UNKNOWN",
+          "message": "Initializing...",
+          "timestamp": 1749607864.734154,
+          "details": null,
+          "history": []
+        }
+      }
+    },
+    "ai_engine": {
+      "title": "AI Engine",
+      "component_count": 4,
+      "components": {
+        "emotion_detector": {
+          "status": "OFFLINE",
+          "message": "Emotion detector ready",
+          "timestamp": 1749607864.8623405,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.8623405,
+              "level": "OFFLINE",
+              "message": "Emotion detector ready",
+              "details": null
+            }
+          ]
+        },
+        "face_detector": {
+          "status": "OFFLINE",
+          "message": "Face detector ready",
+          "timestamp": 1749607864.8849952,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.8849952,
+              "level": "OFFLINE",
+              "message": "Face detector ready",
+              "details": null
+            }
+          ]
+        },
+        "camera": {
+          "status": "ACTIVE",
+          "message": "Camera active",
+          "timestamp": 1749607874.5872653,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.7479742,
+              "level": "OFFLINE",
+              "message": "Camera manager initialized",
+              "details": null
+            },
+            {
+              "timestamp": 1749607874.916952,
+              "level": "ACTIVE",
+              "message": "Camera active",
+              "details": null
+            }
+          ]
+        },
+        "processing": {
+          "status": "OFFLINE",
+          "message": "Real-time processor ready",
+          "timestamp": 1749607864.9726055,
+          "details": null,
+          "history": [
+            {
+              "timestamp": 1749607864.9726055,
+              "level": "OFFLINE",
+              "message": "Real-time processor ready",
+              "details": null
+            }
+          ]
+        }
+      }
+    },
+    "system": {
+      "title": "System Resources",
+      "component_count": 4,
+      "components": {
+        "cpu": {
+          "status": "ONLINE",
+          "message": "CPU: 0.0%",
+          "timestamp": 1749607937.5005322,
+          "details": {
+            "value": 0.0,
+            "unit": "%"
+          },
+          "history": [
+            {
+              "timestamp": 1749607928.4234655,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607929.4322448,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607930.4409547,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607931.4488945,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607932.4574971,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607933.4669545,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607934.475984,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607935.4835114,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607936.491685,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607937.501128,
+              "level": "ONLINE",
+              "message": "CPU: 0.0%",
+              "details": {
+                "value": 0.0,
+                "unit": "%"
+              }
+            }
+          ]
+        },
+        "memory": {
+          "status": "ONLINE",
+          "message": "Memory: 70.4%",
+          "timestamp": 1749607937.5076892,
+          "details": {
+            "value": 70.4,
+            "unit": "%"
+          },
+          "history": [
+            {
+              "timestamp": 1749607928.4313273,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607929.4398465,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607930.4483824,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607931.4570882,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607932.4648397,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607933.4736288,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607934.4826145,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607935.4912448,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607936.4993205,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            },
+            {
+              "timestamp": 1749607937.5076892,
+              "level": "ONLINE",
+              "message": "Memory: 70.4%",
+              "details": {
+                "value": 70.4,
+                "unit": "%"
+              }
+            }
+          ]
+        },
+        "gpu": {
+          "status": "UNKNOWN",
+          "message": "Initializing...",
+          "timestamp": 1749607864.7464576,
+          "details": null,
+          "history": []
+        },
+        "disk": {
+          "status": "UNKNOWN",
+          "message": "Initializing...",
+          "timestamp": 1749607864.7469616,
+          "details": null,
+          "history": []
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "mappings": {
+    "happy": {
+      "scene_name": "Happy Scene",
+      "priority": 8,
+      "confidence_threshold": 0.75,
+      "sustained_duration": 1.5,
+      "cooldown_period": 3.0,
+      "trigger_condition": "confidence",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "sad": {
+      "scene_name": "Calm Scene",
+      "priority": 7,
+      "confidence_threshold": 0.7,
+      "sustained_duration": 2.0,
+      "cooldown_period": 4.0,
+      "trigger_condition": "sustained",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "surprise": {
+      "scene_name": "Dynamic Scene",
+      "priority": 9,
+      "confidence_threshold": 0.8,
+      "sustained_duration": 1.0,
+      "cooldown_period": 2.0,
+      "trigger_condition": "immediate",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "neutral": {
+      "scene_name": "Default Scene",
+      "priority": 5,
+      "confidence_threshold": 0.6,
+      "sustained_duration": 3.0,
+      "cooldown_period": 5.0,
+      "trigger_condition": "sustained",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "angry": {
+      "scene_name": "Intense Scene",
+      "priority": 6,
+      "confidence_threshold": 0.75,
+      "sustained_duration": 1.5,
+      "cooldown_period": 4.0,
+      "trigger_condition": "combined",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "fear": {
+      "scene_name": "Dramatic Scene",
+      "priority": 7,
+      "confidence_threshold": 0.7,
+      "sustained_duration": 2.0,
+      "cooldown_period": 3.0,
+      "trigger_condition": "confidence",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    },
+    "disgust": {
+      "scene_name": "Neutral Scene",
+      "priority": 4,
+      "confidence_threshold": 0.65,
+      "sustained_duration": 2.5,
+      "cooldown_period": 6.0,
+      "trigger_condition": "sustained",
+      "strategy": "direct",
+      "weight": 1.0,
+      "enabled": true,
+      "metadata": {}
+    }
+  },
+  "user_preferences": {},
+  "scene_performance": {},
+  "metadata": {
+    "last_updated": 1766126328.279466,
+    "total_switches": 0,
+    "version": "1.0"
+  }
+}

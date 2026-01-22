@@ -11,30 +11,41 @@ import time
 from pathlib import Path
 
 # 添加項目路徑
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent  # 往上一層到專案根目錄
 sys.path.insert(0, str(project_root / 'src'))
 
 def main():
     print("🎬 LivePilotAI Day 4 功能演示")
     print("=" * 60)
     
-    try:
-        # 導入模組
+    try:        # 導入模組
         from ai_engine.modules.camera_manager import CameraManager, CameraConfig
         from ai_engine.modules.face_detector import FaceDetector, DetectionConfig
         from ai_engine.modules.real_time_detector import RealTimeEmotionDetector, RealTimeConfig
         
         print("✅ 所有模組導入成功")
         
-        # 創建配置
+        # 創建配置 - 使用正確的配置結構
+        camera_config = CameraConfig(
+            device_id=0,
+            width=640,
+            height=480,
+            fps=30
+        )
+        
+        detection_config = DetectionConfig(
+            scale_factor=1.1,
+            min_neighbors=5,
+            min_size=(30, 30),
+            confidence_threshold=0.5
+        )
+        
         config = RealTimeConfig(
-            camera_device_id=0,
-            camera_width=640,
-            camera_height=480,
+            camera_config=camera_config,
+            detection_config=detection_config,
             target_fps=30,
-            detection_method='haar',
-            confidence_threshold=0.5,
-            show_fps=True,
+            show_video=True,
+            show_emotions=True,
             show_confidence=True
         )
         
@@ -74,22 +85,28 @@ def main():
             for i in range(3, 0, -1):
                 print(f"⏰ {i}秒後開始...")
                 time.sleep(1)
-            
-            # 開始檢測
+              # 開始檢測
             try:
-                detector.start_detection()
-                print("✅ 即時檢測啟動成功！")
-                print("📹 攝像頭窗口已開啟，按 'q' 退出")
-                
-                # 等待用戶關閉
-                detector.wait_for_completion()
+                success = detector.start()
+                if success:
+                    print("✅ 即時檢測啟動成功！")
+                    print("📹 攝像頭窗口已開啟，按 'q' 退出")
+                    
+                    # 等待用戶關閉 - 簡單的輪詢方式
+                    try:
+                        while detector.is_running:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        print("\n⏹️ 用戶中斷檢測")
+                else:
+                    print("❌ 檢測啟動失敗")
                 
             except KeyboardInterrupt:
                 print("\n⏹️ 用戶中斷檢測")
             except Exception as e:
                 print(f"\n❌ 檢測過程出錯: {e}")
             finally:
-                detector.stop_detection()
+                detector.stop()
                 print("🛑 檢測已停止")
         else:
             print("\n📊 演示已取消，但所有功能已驗證就緒")

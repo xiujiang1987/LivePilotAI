@@ -10,6 +10,8 @@ import json
 import logging
 import time
 import traceback
+import hashlib
+import base64
 from typing import Optional, Dict, Any, Callable, List
 from dataclasses import dataclass
 from enum import Enum
@@ -100,24 +102,23 @@ class OBSWebSocketManager:
         try:
             self.connection_state = ConnectionState.CONNECTING
             logger.info(f"正在連接到 OBS Studio: {self.connection_url}")
-            
-            # 建立 WebSocket 連接
+              # 建立 WebSocket 連接
             self.websocket = await asyncio.wait_for(
                 websockets.connect(
                     self.connection_url,
-                    extra_headers={"Sec-WebSocket-Protocol": "obswebsocket.json"}
+                    subprotocols=["obswebsocket.json"]
                 ),
                 timeout=self.config.connection_timeout
             )
-            
-            # 啟動消息接收任務
-            self.receive_task = asyncio.create_task(self._receive_messages())
             
             # 執行握手
             if await self._perform_handshake():
                 self.connection_state = ConnectionState.CONNECTED
                 self.stats['connected_time'] = time.time()
-                logger.info("✅ 成功連接到 OBS Studio")
+                logger.info("成功連接到 OBS Studio")
+                
+                # 啟動消息接收任務 (握手完成後再啟動)
+                self.receive_task = asyncio.create_task(self._receive_messages())
                 
                 # 啟動心跳檢測
                 self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -133,19 +134,19 @@ class OBSWebSocketManager:
         except asyncio.TimeoutError:
             self.connection_state = ConnectionState.ERROR
             self.stats['last_error'] = "連接超時"
-            logger.error("❌ 連接 OBS Studio 超時")
+            logger.error("連接 OBS Studio 超時")
             return False
             
         except InvalidURI:
             self.connection_state = ConnectionState.ERROR  
             self.stats['last_error'] = "無效的連接地址"
-            logger.error(f"❌ 無效的 OBS WebSocket 地址: {self.connection_url}")
+            logger.error(f"無效的 OBS WebSocket 地址: {self.connection_url}")
             return False
             
         except Exception as e:
             self.connection_state = ConnectionState.ERROR
             self.stats['last_error'] = str(e)
-            logger.error(f"❌ 連接 OBS Studio 失敗: {e}")
+            logger.error(f"連接 OBS Studio 失敗: {e}")
             return False
     
     async def disconnect(self):
@@ -167,7 +168,7 @@ class OBSWebSocketManager:
             self.websocket = None
             
         self.connection_state = ConnectionState.DISCONNECTED
-        logger.info("✅ 已斷開 OBS Studio 連接")
+        logger.info("已斷開 OBS Studio 連接")
         
         # 觸發斷開事件
         await self._trigger_event('ConnectionClosed', {})
@@ -247,14 +248,41 @@ class OBSWebSocketManager:
                 logger.error("未收到 Hello 消息")
                 return False
                 
+            d = hello_data.get("d", {})
+            authentication = d.get("authentication")
+            
+            identify_data = {
+                "rpcVersion": 1,
+                "eventSubscriptions": 33  # 訂閱所有事件
+            }
+            
+            # 處理認證
+            if authentication:
+                if not self.config.password:
+                    logger.error("服務器需要認證，但未提供密碼")
+                    return False
+                    
+                salt = authentication.get("salt")
+                challenge = authentication.get("challenge")
+                
+                if salt and challenge:
+                    # 計算認證響應
+                    # 1. secret = base64(sha256(password + salt))
+                    secret_string = self.config.password + salt
+                    secret_hash = hashlib.sha256(secret_string.encode('utf-8')).digest()
+                    secret = base64.b64encode(secret_hash).decode('utf-8')
+                    
+                    # 2. auth_response = base64(sha256(secret + challenge))
+                    auth_response_string = secret + challenge
+                    auth_response_hash = hashlib.sha256(auth_response_string.encode('utf-8')).digest()
+                    auth_response = base64.b64encode(auth_response_hash).decode('utf-8')
+                    
+                    identify_data["authentication"] = auth_response
+            
             # 發送 Identify 消息
             identify_message = {
                 "op": 1,  # Identify
-                "d": {
-                    "rpcVersion": 1,
-                    "authentication": self.config.password if self.config.password else None,
-                    "eventSubscriptions": 33  # 訂閱所有事件
-                }
+                "d": identify_data
             }
             
             await self.websocket.send(json.dumps(identify_message))
@@ -270,11 +298,11 @@ class OBSWebSocketManager:
                 logger.error("握手失敗")
                 return False
                 
-            logger.info("✅ WebSocket 握手成功")
+            logger.info("WebSocket 握手成功")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 握手失敗: {e}")
+            logger.error(f"握手失敗: {e}")
             return False
     
     async def _receive_messages(self):
@@ -340,9 +368,9 @@ class OBSWebSocketManager:
                 if self.is_connected:
                     try:
                         await self.send_request("GetVersion", timeout=3)
-                        logger.debug("💓 心跳檢測正常")
+                        logger.debug("心跳檢測正常")
                     except Exception as e:
-                        logger.warning(f"❤️‍🩹 心跳檢測失敗: {e}")
+                        logger.warning(f"心跳檢測失敗: {e}")
                         break
                         
         except asyncio.CancelledError:
@@ -358,17 +386,17 @@ class OBSWebSocketManager:
         self.connection_state = ConnectionState.RECONNECTING
         self.stats['reconnection_count'] += 1
         
-        logger.info(f"🔄 開始自動重連 (第 {self.stats['reconnection_count']} 次)")
+        logger.info(f"開始自動重連 (第 {self.stats['reconnection_count']} 次)")
         
         while self.config.auto_reconnect and not self.is_connected:
             try:
                 await asyncio.sleep(self.config.reconnect_interval)
                 
                 if await self.connect():
-                    logger.info("✅ 自動重連成功")
+                    logger.info("自動重連成功")
                     return
                 else:
-                    logger.warning("❌ 自動重連失敗，繼續嘗試...")
+                    logger.warning("自動重連失敗，繼續嘗試...")
                     
             except Exception as e:
                 logger.error(f"自動重連出錯: {e}")

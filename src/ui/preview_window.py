@@ -16,8 +16,10 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import time
 import threading
 import logging
+import os
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
+from ..utils.i18n import i18n
 
 
 @dataclass
@@ -65,14 +67,6 @@ class PreviewWindow:
         self.canvas: Optional[tk.Canvas] = None
         self.control_frame: Optional[ttk.Frame] = None
         
-        # State variables
-        self.is_fullscreen = tk.BooleanVar(value=self.config.fullscreen_mode)
-        self.show_overlays = tk.BooleanVar(value=self.config.show_emotion_overlay)
-        self.show_faces = tk.BooleanVar(value=self.config.show_face_boxes)
-        self.show_confidence = tk.BooleanVar(value=self.config.show_confidence_bars)
-        self.show_fps = tk.BooleanVar(value=self.config.show_fps_counter)
-        self.show_time = tk.BooleanVar(value=self.config.show_timestamp)
-        
         # Data tracking
         self.current_frame: Optional[np.ndarray] = None
         self.current_emotions: List[Dict[str, Any]] = []
@@ -83,17 +77,49 @@ class PreviewWindow:
         self.update_thread: Optional[threading.Thread] = None
         self.running = False
         
+        # Font
+        self.font = None
+        self._init_font()
+        
         # Setup window
         self._setup_window()
+        
+        # State variables (initialized after window creation to bind to correct master)
+        self.is_fullscreen = tk.BooleanVar(master=self.root, value=self.config.fullscreen_mode)
+        self.show_overlays = tk.BooleanVar(master=self.root, value=self.config.show_emotion_overlay)
+        self.show_faces = tk.BooleanVar(master=self.root, value=self.config.show_face_boxes)
+        self.show_confidence = tk.BooleanVar(master=self.root, value=self.config.show_confidence_bars)
+        self.show_fps = tk.BooleanVar(master=self.root, value=self.config.show_fps_counter)
+        self.show_time = tk.BooleanVar(master=self.root, value=self.config.show_timestamp)
+        
         self._setup_ui()
         self._start_update_loop()
         
         self.logger.info("PreviewWindow initialized")
     
+    def _init_font(self) -> None:
+        """Initialize font for text drawing"""
+        try:
+            font_path = "arial.ttf"
+            if os.name == 'nt':
+                # Use absolute path for Windows font to ensure it's found
+                font_path = "C:/Windows/Fonts/msjh.ttc" # Microsoft JhengHei
+            
+            self.font = ImageFont.truetype(font_path, 20)
+        except Exception as e:
+            self.logger.warning(f"Failed to load custom font: {e}, using default")
+            self.font = ImageFont.load_default()
+
     def _setup_window(self) -> None:
         """Setup the preview window"""
         self.root = tk.Toplevel(self.main_panel.root)
-        self.root.title(self.config.window_title)
+        
+        # Localize title if it matches default
+        title = self.config.window_title
+        if title == "LivePilotAI - Live Preview":
+            title = i18n.get("preview_title")
+        self.root.title(title)
+        
         self.root.geometry(f"{self.config.window_size[0]}x{self.config.window_size[1]}")
         
         # Window configuration
@@ -139,56 +165,56 @@ class PreviewWindow:
     def _setup_controls(self) -> None:
         """Setup control panel"""
         # Display options
-        display_frame = ttk.LabelFrame(self.control_frame, text="Display Options")
+        display_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("display_options"))
         display_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Checkbutton(
-            display_frame, text="Show Emotion Overlays",
+            display_frame, text=i18n.get("show_overlays"),
             variable=self.show_overlays
         ).pack(anchor=tk.W, padx=5, pady=2)
         
         ttk.Checkbutton(
-            display_frame, text="Show Face Boxes",
+            display_frame, text=i18n.get("show_faces"),
             variable=self.show_faces
         ).pack(anchor=tk.W, padx=5, pady=2)
         
         ttk.Checkbutton(
-            display_frame, text="Show Confidence Bars",
+            display_frame, text=i18n.get("show_confidence_bars"),
             variable=self.show_confidence
         ).pack(anchor=tk.W, padx=5, pady=2)
         
         ttk.Checkbutton(
-            display_frame, text="Show FPS Counter",
+            display_frame, text=i18n.get("show_fps_counter"),
             variable=self.show_fps
         ).pack(anchor=tk.W, padx=5, pady=2)
         
         ttk.Checkbutton(
-            display_frame, text="Show Timestamp",
+            display_frame, text=i18n.get("show_timestamp"),
             variable=self.show_time
         ).pack(anchor=tk.W, padx=5, pady=2)
         
         # Window options
-        window_frame = ttk.LabelFrame(self.control_frame, text="Window Options")
+        window_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("window_options"))
         window_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Button(
-            window_frame, text="Toggle Fullscreen",
+            window_frame, text=i18n.get("toggle_fullscreen"),
             command=self.toggle_fullscreen
         ).pack(side=tk.LEFT, padx=5, pady=5)
         
         ttk.Button(
-            window_frame, text="Take Screenshot",
+            window_frame, text=i18n.get("take_screenshot"),
             command=self.take_screenshot
         ).pack(side=tk.LEFT, padx=5, pady=5)
         
         ttk.Button(
-            window_frame, text="Reset View",
+            window_frame, text=i18n.get("reset_view"),
             command=self.reset_view
         ).pack(side=tk.LEFT, padx=5, pady=5)
         
         # Close button
         ttk.Button(
-            self.control_frame, text="Close Preview",
+            self.control_frame, text=i18n.get("close_preview"),
             command=self.close
         ).pack(side=tk.RIGHT, padx=5, pady=5)
     
@@ -211,7 +237,11 @@ class PreviewWindow:
                     if frame is not None:
                         # Get emotion detection results
                         emotions = []
-                        if (hasattr(self.main_panel, 'emotion_detector') and
+                        
+                        # Use shared results from MainPanel to avoid double inference
+                        if hasattr(self.main_panel, 'latest_results'):
+                            emotions = self.main_panel.latest_results
+                        elif (hasattr(self.main_panel, 'emotion_detector') and
                             self.main_panel.emotion_detector):
                             
                             detection_results = self.main_panel.emotion_detector.detect_emotions(frame)
@@ -304,28 +334,53 @@ class PreviewWindow:
         cv2.rectangle(frame, (location[0], location[1]), (location[2], location[3]), color, 2)
         
         # Draw label
-        label = f"{emotion.title()}: {confidence:.2f}"
-        label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+        emotion_text = i18n.get(emotion, emotion).title()
+        label = f"{emotion_text}: {confidence:.2f}"
         
-        # Draw label background
-        cv2.rectangle(
-            frame,
-            (location[0], location[1] - label_size[1] - 10),
-            (location[0] + label_size[0], location[1]),
-            color,
-            -1
-        )
-        
-        # Draw label text
-        cv2.putText(
-            frame,
-            label,
-            (location[0], location[1] - 5),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 0, 0),
-            2
-        )
+        # Use PIL to draw text (supports Chinese)
+        try:
+            # Convert to PIL Image
+            img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            
+            # Use pre-loaded font
+            font = self.font
+            if font is None:
+                self._init_font()
+                font = self.font
+            
+            # Get text size
+            left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+            text_width = right - left
+            text_height = bottom - top
+            
+            # Draw label background
+            cv2.rectangle(
+                frame,
+                (location[0], location[1] - text_height - 10),
+                (location[0] + text_width + 10, location[1]),
+                color,
+                -1
+            )
+            
+            # Draw text on PIL image
+            draw.text((location[0] + 5, location[1] - text_height - 5), label, font=font, fill=(0, 0, 0))
+            
+            # Convert back to OpenCV image
+            frame[:] = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            
+        except Exception as e:
+            self.logger.error(f"Error drawing text with PIL: {e}")
+            # Fallback to OpenCV putText
+            cv2.putText(
+                frame,
+                label,
+                (location[0], location[1] - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 0),
+                2
+            )
     
     def _draw_emotion_overlay(self, frame: np.ndarray, emotion_data: Dict[str, Any]) -> None:
         """Draw emotion overlay graphics"""
@@ -349,7 +404,7 @@ class PreviewWindow:
             self._draw_surprise_face(frame, center, color, confidence)
         else:
             # Default: draw emotion name
-            self._draw_text(frame, emotion.title(), center, color)
+            self._draw_text(frame, i18n.get(emotion, emotion).title(), center, color)
     
     def _draw_confidence_bars(self, frame: np.ndarray, emotions: List[Dict[str, Any]]) -> None:
         """Draw confidence bars for all detected emotions"""
@@ -398,31 +453,69 @@ class PreviewWindow:
             
             # Draw emotion label
             label = emotion[:3].upper()  # First 3 letters
-            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
-            text_x = bar_x + (bar_width - text_size[0]) // 2
-            cv2.putText(
-                frame,
-                label,
-                (text_x, start_y + bar_height + 15),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                (255, 255, 255),
-                1
-            )
+            # Try to get translated short name if possible, otherwise use English
+            emotion_text = i18n.get(emotion, emotion)
+            if i18n.current_language == "zh_TW":
+                label = emotion_text  # Use full Chinese name (usually 2 chars)
             
-            # Draw confidence value
-            conf_text = f"{confidence:.2f}"
-            conf_size = cv2.getTextSize(conf_text, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)[0]
-            conf_x = bar_x + (bar_width - conf_size[0]) // 2
-            cv2.putText(
-                frame,
-                conf_text,
-                (conf_x, start_y - 5),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.3,
-                color,
-                1
-            )
+            # Use PIL for text drawing to support Chinese
+            try:
+                img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                draw = ImageDraw.Draw(img_pil)
+                
+                # Use pre-loaded font
+                font = self.font
+                if font is None:
+                    self._init_font()
+                    font = self.font
+                
+                # Calculate text position
+                left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+                text_width = right - left
+                text_x = bar_x + (bar_width - text_width) // 2
+                
+                # Draw text
+                draw.text((text_x, start_y + bar_height + 5), label, font=font, fill=(255, 255, 255))
+                
+                # Draw confidence value
+                conf_text = f"{confidence:.2f}"
+                left, top, right, bottom = draw.textbbox((0, 0), conf_text, font=font)
+                conf_width = right - left
+                conf_x = bar_x + (bar_width - conf_width) // 2
+                
+                # Use a smaller font for confidence if possible, or same font
+                draw.text((conf_x, start_y - 25), conf_text, font=font, fill=color)
+                
+                # Convert back
+                frame[:] = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+                
+            except Exception as e:
+                # Fallback to OpenCV
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
+                text_x = bar_x + (bar_width - text_size[0]) // 2
+                cv2.putText(
+                    frame,
+                    label,
+                    (text_x, start_y + bar_height + 15),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (255, 255, 255),
+                    1
+                )
+                
+                # Draw confidence value
+                conf_text = f"{confidence:.2f}"
+                conf_size = cv2.getTextSize(conf_text, cv2.FONT_HERSHEY_SIMPLEX, 0.3, 1)[0]
+                conf_x = bar_x + (bar_width - conf_size[0]) // 2
+                cv2.putText(
+                    frame,
+                    conf_text,
+                    (conf_x, start_y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.3,
+                    color,
+                    1
+                )
     
     def _draw_smiley(self, frame: np.ndarray, center: Tuple[int, int], color: Tuple[int, int, int], confidence: float) -> None:
         """Draw a smiley face overlay"""
@@ -597,6 +690,15 @@ class PreviewWindow:
     
     def _on_click(self, event) -> None:
         """Handle mouse click events"""
+        # Check if click is within control frame or its children
+        try:
+            widget = event.widget
+            # If widget is the control frame or any of its children, do not toggle visibility
+            if str(widget).startswith(str(self.control_frame)):
+                return
+        except Exception:
+            pass
+
         # Toggle controls on click
         if self.control_frame.winfo_viewable():
             self._hide_controls()

@@ -1,0 +1,51 @@
+{
+  "obs": {
+    "host": "localhost",
+    "port": 4455,
+    "password": "bFEpZwfgU01qo3AQ",
+    "auto_connect": true,
+    "reconnect_interval": 5,
+    "timeout": 10
+  },
+  "emotion": {
+    "confidence_threshold": 0.7,
+    "update_interval": 100,
+    "smoothing_factor": 0.3,
+    "min_face_size": 30,
+    "max_faces": 5
+  },
+  "scene_switching": {
+    "enable_auto_switch": false,
+    "switch_cooldown": 2.0,
+    "transition_duration": 1000,
+    "confidence_required": 0.8,
+    "sustained_duration": 1.0
+  },
+  "ui": {
+    "theme": "dark",
+    "update_fps": 30,
+    "show_confidence": true,
+    "show_fps": true,
+    "preview_size": [
+      640,
+      480
+    ],
+    "emotion_colors": {
+      "happy": "#00FF00",
+      "sad": "#0080FF",
+      "angry": "#FF4444",
+      "fear": "#800080",
+      "surprise": "#FFFF00",
+      "disgust": "#008000",
+      "neutral": "#FFFFFF"
+    },
+    "language": "zh_TW"
+  },
+  "performance": {
+    "max_cpu_usage": 80,
+    "memory_limit_mb": 512,
+    "gpu_acceleration": true,
+    "threading_enabled": true,
+    "cache_size": 100
+  }
+}
