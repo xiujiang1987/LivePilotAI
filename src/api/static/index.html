@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LivePilotAI 控制台 (v1.1.0)</title>
+    <!-- Tailwind CSS (CDN for minimal setup) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .bg-gradient { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+    </style>
+</head>
+<body class="bg-gradient text-slate-100 min-h-screen">
+    <div class="container mx-auto p-6 max-w-5xl">
+        <!-- Header -->
+        <header class="bg-slate-800/80 backdrop-blur rounded-2xl p-6 mb-6 shadow-xl border border-slate-700 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-white mb-2">🎬 LivePilotAI <span class="text-indigo-400">Control Panel</span></h1>
+                <p class="text-slate-400">智能 AI 導播與情緒監控系統</p>
+            </div>
+            <div class="flex gap-4">
+                <div class="flex items-center gap-2">
+                    <div id="apiStatus" class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span class="text-sm font-medium">API 狀態</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="sysStatus" class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span class="text-sm font-medium">系統核心</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="obsStatus" class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span class="text-sm font-medium">OBS 連線</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Emotion Monitor -->
+            <section class="bg-slate-800/80 backdrop-blur rounded-2xl p-6 shadow-xl border border-slate-700">
+                <h2 class="text-xl font-semibold mb-4 border-b border-slate-700 pb-2">🎭 即時情緒監控</h2>
+                <div class="flex flex-col items-center justify-center py-8">
+                    <div id="emotionEmoji" class="text-8xl mb-4 transition-transform hover:scale-110">😐</div>
+                    <h3 id="emotionLabel" class="text-3xl font-bold uppercase text-indigo-300">NEUTRAL</h3>
+                    <p class="text-slate-400 mt-2">API輪詢更新</p>
+                </div>
+            </section>
+
+            <!-- OBS Scene Control -->
+            <section class="bg-slate-800/80 backdrop-blur rounded-2xl p-6 shadow-xl border border-slate-700">
+                <h2 class="text-xl font-semibold mb-4 border-b border-slate-700 pb-2">🎬 OBS 場景強制切換</h2>
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <button onclick="switchScene('Gaming')" class="bg-slate-700 hover:bg-indigo-600 text-white font-medium py-4 px-4 rounded-xl transition shadow-md">🎮 遊戲畫面 (Gaming)</button>
+                    <button onclick="switchScene('Chatting')" class="bg-slate-700 hover:bg-emerald-600 text-white font-medium py-4 px-4 rounded-xl transition shadow-md">💬 聊天佈局 (Chatting)</button>
+                    <button onclick="switchScene('Focused')" class="bg-slate-700 hover:bg-amber-600 text-white font-medium py-4 px-4 rounded-xl transition shadow-md">🎯 專注特寫 (Focused)</button>
+                    <button onclick="switchScene('Showcase')" class="bg-slate-700 hover:bg-sky-600 text-white font-medium py-4 px-4 rounded-xl transition shadow-md">📺 畫面展示 (Showcase)</button>
+                </div>
+                <p id="actionResult" class="text-sm text-center text-slate-400 h-6"></p>
+            </section>
+            
+            <!-- System Controls -->
+            <section class="bg-slate-800/80 backdrop-blur rounded-2xl p-6 shadow-xl border border-slate-700 md:col-span-2">
+                <h2 class="text-xl font-semibold mb-4 border-b border-slate-700 pb-2">⚙️ 系統核心控制</h2>
+                <div class="flex gap-4">
+                    <button onclick="systemAction('stop_ai')" class="bg-red-500/80 hover:bg-red-500 text-white font-medium py-3 px-6 rounded-lg transition shadow-md">
+                        🛑 停止 AI 引擎
+                    </button>
+                    <!-- <button disabled class="bg-slate-600 text-slate-400 font-medium py-3 px-6 rounded-lg cursor-not-allowed">
+                        ▶️ 啟動 AI 引擎 (暫不支援遠端)
+                    </button> -->
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        const emotionMap = {
+            'happy': '😊', 'sad': '😢', 'angry': '😠',
+            'fear': '😨', 'surprise': '😲', 'disgust': '🤢',
+            'neutral': '😐'
+        };
+
+        async function fetchStatus() {
+            try {
+                // Check if API is answering
+                const healthRes = await fetch(`${API_BASE}/health`);
+                document.getElementById('apiStatus').className = healthRes.ok ? 'w-3 h-3 rounded-full bg-emerald-500' : 'w-3 h-3 rounded-full bg-red-500';
+                
+                // Get System Status
+                const statusRes = await fetch(`${API_BASE}/status`);
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    document.getElementById('sysStatus').className = status.is_running ? 'w-3 h-3 rounded-full bg-emerald-500' : 'w-3 h-3 rounded-full bg-slate-500';
+                    document.getElementById('obsStatus').className = status.obs_connected ? 'w-3 h-3 rounded-full bg-emerald-500' : 'w-3 h-3 rounded-full bg-amber-500';
+                }
+
+                // Get Emotion data if AI is active
+                const emoRes = await fetch(`${API_BASE}/emotion`);
+                if (emoRes.ok) {
+                    const emoData = await emoRes.json();
+                    const eKey = emoData.dominant_emotion.toLowerCase();
+                    document.getElementById('emotionLabel').innerText = eKey;
+                    document.getElementById('emotionEmoji').innerText = emotionMap[eKey] || '🤔';
+                }
+            } catch (err) {
+                console.error('API Fetch failed:', err);
+                document.getElementById('apiStatus').className = 'w-3 h-3 rounded-full bg-red-500';
+            }
+        }
+
+        async function switchScene(sceneName) {
+            const resultMsg = document.getElementById('actionResult');
+            resultMsg.innerText = `🔄 切換場景至 ${sceneName}...`;
+            try {
+                const res = await fetch(`${API_BASE}/layout`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({scene_name: sceneName})
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    resultMsg.innerHTML = `<span class="text-emerald-400">✔️ 成功：${data.message}</span>`;
+                } else {
+                    resultMsg.innerHTML = `<span class="text-red-400">❌ 失敗：${data.detail}</span>`;
+                }
+            } catch (err) {
+                resultMsg.innerHTML = `<span class="text-red-400">❌ 網路異常</span>`;
+            }
+            setTimeout(() => resultMsg.innerText = '', 3000);
+        }
+
+        async function systemAction(cmd) {
+            if(!confirm(`確定要執行指令: ${cmd} 嗎？`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/system`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd})
+                });
+                const data = await res.json();
+                if (res.ok) alert(`成功: ${data.message}`);
+                else alert(`錯誤: ${data.detail}`);
+            } catch (err) {
+                alert(`請求失敗: ${err.message}`);
+            }
+        }
+
+        // Start polling loop
+        setInterval(fetchStatus, 3000);
+        fetchStatus();
+    </script>
+</body>
+</html>
