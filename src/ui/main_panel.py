@@ -30,7 +30,6 @@ from ..ai_engine.modules.visualizer import Visualizer
 from ..ai_engine.modules.emotion_intensity import EmotionIntensityAnalyzer
 from ..ai_engine.modules.gesture_detector import GestureDetector
 from ..ai_engine.modules.style_transfer import StyleTransfer
-from ..ai_engine.modules.audio_controller import AudioController # New
 from ..obs_integration.obs_manager import OBSManager
 from ..obs_integration.emotion_mapper import EmotionMapper, EmotionContext
 from .preview_window import PreviewWindow
@@ -109,37 +108,55 @@ class MainPanel:
         self.update_thread: Optional[threading.Thread] = None
         self.running = False
         
-        # Initialize components
-        self._setup_logging()
-        self._initialize_components()
+        # Asyncio Loop (Persistent)
+        self.obs_loop = None
+        self.obs_thread = None
+        self._start_async_loop()
         
-        self.logger.info("MainPanel initialized")
-    
-    def _setup_logging(self) -> None:
-        """Setup logging configuration"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler('livepilot_ui.log')
-            ]
-        )
-    
+        # Components map for injection
+        self.injected_components = {}
+
+    def _start_async_loop(self):
+        """Start global async loop in a separate thread"""
+        def run_loop(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+            
+        self.obs_loop = asyncio.new_event_loop()
+        self.obs_thread = threading.Thread(target=run_loop, args=(self.obs_loop,), daemon=True)
+        self.obs_thread.start()
+
+    def set_components(self, **kwargs):
+        """Inject external components"""
+        for k, v in kwargs.items():
+            self.injected_components[k] = v
+        # Update attributes if they exist
+        if 'emotion_detector' in kwargs: self.emotion_detector = kwargs['emotion_detector']
+        if 'camera_manager' in kwargs: self.camera_manager = kwargs['camera_manager']
+        if 'obs_manager' in kwargs: self.obs_manager = kwargs['obs_manager']
+        if 'emotion_mapper' in kwargs: self.emotion_mapper = kwargs['emotion_mapper']
+        if 'voice_commander' in kwargs: self.voice_commander = kwargs['voice_commander']
+
     def _initialize_components(self) -> None:
         """Initialize all core components"""
         try:
-            # Initialize AI components
-            self.emotion_detector = EmotionDetector()
-            self.camera_manager = CameraManager()
-            self.emotion_mapper = EmotionMapper()
+            # Initialize AI components if not injected
+            if not getattr(self, 'emotion_detector', None):
+                 self.emotion_detector = self.injected_components.get('emotion_detector') or EmotionDetector()
             
+            if not getattr(self, 'camera_manager', None):
+                 self.camera_manager = self.injected_components.get('camera_manager') or CameraManager()
+
+            if not getattr(self, 'emotion_mapper', None):
+                 self.emotion_mapper = self.injected_components.get('emotion_mapper') or EmotionMapper()
+
+            self.voice_commander = self.injected_components.get('voice_commander')
+
             # Initialize new visual components
             self.face_tracker = FaceTracker()
             self.visualizer = Visualizer()
             self.gesture_detector = GestureDetector()
             self.style_transfer = StyleTransfer()
-            self.audio_controller = AudioController() # New
             self.analyzers = {}
             
             # Shared data for preview window
@@ -197,6 +214,9 @@ class MainPanel:
             
             # Initialize status indicators
             self.status_indicators = SystemStatusManager()
+            
+            # Check First Run
+            self.check_first_run()
             
             # Bind events
             self._bind_events()
@@ -314,8 +334,62 @@ class MainPanel:
     def show_obs_help(self) -> None:
         """Show OBS connection help"""
         messagebox.showinfo(i18n.get("obs_guide"), i18n.get("obs_guide_content"))
-        help_menu.add_command(label="Documentation", command=self.show_documentation)
-    
+        # Removed incorrect access to help_menu
+        
+    def check_first_run(self):
+        """Check if this is the first run and show wizard"""
+        # Simple check: if obs password is empty or user manually requested
+        app_config = config_manager.get_config()
+        if not app_config.obs.websocket_password:
+             self.logger.info("First run detected (or missing password). Launching Wizard.")
+             self.root.after(1000, self.show_wizard)
+
+    def show_wizard(self):
+        """Show the First Run Wizard"""
+        self.logger.info("Configuration Wizard Displayed")
+        wizard = tk.Toplevel(self.root)
+        wizard.title("歡迎使用 LivePilotAI (First Run Wizard)")
+        wizard.geometry("500x400")
+        wizard.transient(self.root)
+        wizard.grab_set()
+        
+        # Center contents
+        frame = ttk.Frame(wizard, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="歡迎使用 / Welcome", font=("Helvetica", 16, "bold")).pack(pady=10)
+        ttk.Label(frame, text="檢測到您尚未設定 OBS 密碼，或這是您第一次執行。", wraplength=450).pack(pady=5)
+        
+        step_frame = ttk.LabelFrame(frame, text="快速設定 / Quick Setup", padding=10)
+        step_frame.pack(fill=tk.X, pady=10)
+        
+        # OBS Password Input
+        ttk.Label(step_frame, text="OBS WebSocket Password:").grid(row=0, column=0, sticky=tk.W)
+        pwd_var = tk.StringVar()
+        entry = ttk.Entry(step_frame, textvariable=pwd_var, show="*")
+        entry.grid(row=0, column=1, sticky=tk.EW, padx=5)
+        step_frame.columnconfigure(1, weight=1)
+        
+        def save_and_close():
+            pwd = pwd_var.get()
+            if pwd:
+                # Update config
+                app_config = config_manager.get_config()
+                app_config.obs.websocket_password = pwd
+                save_config(app_config)
+                
+                # Update runtime obs_manager config if exists
+                if self.obs_manager:
+                     self.obs_manager.config.password = pwd
+                
+                messagebox.showinfo("Success", "設定已儲存！請嘗試點擊 '連接 OBS'。\nSettings saved! Please try connecting OBS.")
+            wizard.destroy()
+            
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X, pady=20)
+        ttk.Button(btn_frame, text="跳過 / Skip", command=wizard.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="儲存 / Save", command=save_and_close).pack(side=tk.RIGHT)
+
     def _create_control_panel(self) -> None:
         """Create the main control panel"""
         # Camera controls
@@ -352,8 +426,11 @@ class MainPanel:
         
         # Scene controls
         ttk.Label(obs_frame, text=i18n.get("current_scene")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
-        scene_label = ttk.Label(obs_frame, textvariable=self.current_scene, font=("", 9, "bold"))
-        scene_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Change from Label to Combobox for interaction
+        self.scene_combo = ttk.Combobox(obs_frame, textvariable=self.current_scene, state="readonly", width=15)
+        self.scene_combo.bind("<<ComboboxSelected>>", self.on_scene_changed)
+        self.scene_combo.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
         
         # Auto-switching controls
         auto_frame = ttk.LabelFrame(self.control_frame, text=i18n.get("auto_switch"), padding="5")
@@ -364,6 +441,19 @@ class MainPanel:
             command=self.toggle_auto_switching
         )
         self.auto_switch_button.grid(row=0, column=0, pady=2)
+        
+        # Voice Command controls
+        voice_frame = ttk.LabelFrame(self.control_frame, text="Voice Control", padding="5")
+        voice_frame.grid(row=0, column=3, padx=(0, 10), sticky=(tk.W, tk.E, tk.N))
+        
+        self.voice_button = ttk.Button(
+            voice_frame, text="Start Voice",
+            command=self.toggle_voice_control
+        )
+        self.voice_button.grid(row=0, column=0, pady=2)
+        
+        self.voice_status_indicator = ttk.Label(voice_frame, text="●", foreground="red")
+        self.voice_status_indicator.grid(row=0, column=1, padx=(5, 0))
         
         self.auto_status = ttk.Label(auto_frame, text="●", foreground="red")
         self.auto_status.grid(row=0, column=1, padx=(10, 0))
@@ -552,7 +642,7 @@ class MainPanel:
                 if self.emotion_detector:
                     self.emotion_detector.stop()
                 if self.camera_manager:
-                    self.camera_manager.stop_camera()
+                    self.camera_manager.stop()
                 
                 self.camera_running.set(False)
                 self.camera_button.config(text=i18n.get("start_camera"))
@@ -582,46 +672,53 @@ class MainPanel:
         """Connect to OBS Studio"""
         try:
             if not self.obs_connected.get():
-                # Run connection in background thread
-                def connect_async():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    success = loop.run_until_complete(self.obs_manager.connect())
-                    
-                    # Update UI in main thread
-                    def update_ui():
-                        self._update_obs_status(success)
-                        if not success:
-                            # Get error message
-                            error_msg = self.obs_manager.stats.get('last_error', 'Unknown error')
-                            messagebox.showerror(
-                                i18n.get("obs_error"), 
-                                f"{i18n.get('obs_connect_error_msg')}\n{error_msg}"
-                            )
-                    
-                    self.root.after(0, update_ui)
+                if not self.obs_manager:
+                     self._initialize_components()
+
+                self.logger.info("Connecting to OBS...")
                 
-                threading.Thread(target=connect_async, daemon=True).start()
+                # Callback for persistent loop
+                def on_connect_complete(future):
+                    try:
+                        success = future.result()
+                        self.root.after(0, lambda: self._handle_connect_result(success))
+                    except Exception as e:
+                        self.logger.error(f"OBS connection future exception: {e}")
+                        self.root.after(0, lambda: self._handle_connect_result(False, str(e)))
+
+                # Dispatch to persistent loop
+                if self.obs_loop and self.obs_loop.is_running():
+                     future = asyncio.run_coroutine_threadsafe(self.obs_manager.connect(), self.obs_loop)
+                     future.add_done_callback(on_connect_complete)
+                else:
+                     self.logger.error("OBS Async Loop is not running!")
                 
         except Exception as e:
             self.logger.error(f"Error connecting to OBS: {e}")
             messagebox.showerror(i18n.get("obs_error"), f"{i18n.get('obs_connect_error_msg')}: {e}")
+
+    def _handle_connect_result(self, success, error_msg=None):
+        self._update_obs_status(success)
+        if not success:
+            msg = error_msg or self.obs_manager.stats.get('last_error', 'Unknown error')
+            messagebox.showerror(
+                i18n.get("obs_error"), 
+                f"{i18n.get('obs_connect_error_msg')}\n{msg}"
+            )
     
     def disconnect_obs(self) -> None:
         """Disconnect from OBS Studio"""
         try:
             if self.obs_connected.get():
-                def disconnect_async():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    loop.run_until_complete(self.obs_manager.disconnect())
-                    
-                    # Update UI in main thread
-                    self.root.after(0, lambda: self._update_obs_status(False))
-                
-                threading.Thread(target=disconnect_async, daemon=True).start()
+                def on_disconnect_complete(future):
+                     self.root.after(0, lambda: self._update_obs_status(False))
+
+                if self.obs_loop and self.obs_loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(self.obs_manager.disconnect(), self.obs_loop)
+                    future.add_done_callback(on_disconnect_complete)
+                else:
+                    self.logger.error("OBS loop not running, cannot disconnect cleanly")
+                    self._update_obs_status(False)
                 
         except Exception as e:
             self.logger.error(f"Error disconnecting from OBS: {e}")
@@ -633,10 +730,51 @@ class MainPanel:
             self.obs_button.config(text=i18n.get("disconnect_obs"))
             self.obs_status.config(foreground="green")
             self.logger.info("OBS connected successfully")
+            # Update scenes
+            self.update_scenes_from_obs()
         else:
             self.obs_button.config(text=i18n.get("connect_obs"))
             self.obs_status.config(foreground="red")
             self.current_scene.set(i18n.get("no_scene"))
+            if hasattr(self, 'scene_combo'):
+                self.scene_combo['values'] = []
+
+    def update_scenes_from_obs(self):
+        """Fetch scene list from OBS and update combo"""
+        
+        def on_fetch_complete(future):
+            try:
+                scenes = future.result()
+                self.logger.info(f"OBS Scenes Fetched: {scenes}")
+                self.root.after(0, lambda: self._update_scene_combo(scenes))
+            except Exception as e:
+                self.logger.error(f"Failed to fetch scenes: {e}")
+
+        if self.obs_loop and self.obs_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(self.obs_manager.get_scene_list(), self.obs_loop)
+            future.add_done_callback(on_fetch_complete)
+        else:
+             self.logger.error("OBS loop not running for fetch_scenes")
+
+    def _update_scene_combo(self, scenes):
+        self.available_scenes = scenes  # Store for voice commands
+        if hasattr(self, 'scene_combo'):
+            self.scene_combo['values'] = scenes
+            if scenes:
+                 # Default to first if none selected
+                 if not self.current_scene.get() or self.current_scene.get() == "No Scene":
+                      self.current_scene.set(scenes[0])
+
+    def on_scene_changed(self, event):
+        """Handle scene selection from combo"""
+        scene_name = self.current_scene.get()
+        if not self.obs_connected.get() or not scene_name:
+            return
+            
+        if self.obs_loop and self.obs_loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.obs_manager.set_current_program_scene(scene_name), self.obs_loop)
+        else:
+            self.logger.error("OBS loop not running for scene switch")
     
     def toggle_obs_connection(self) -> None:
         """Toggle OBS connection"""
@@ -661,58 +799,72 @@ class MainPanel:
     
     def toggle_voice_control(self) -> None:
         """Toggle voice control system"""
-        if self.audio_controller.is_listening:
-            self.audio_controller.stop_listening()
-            self.voice_button.config(text="Start Listen")
-            self.voice_status.config(foreground="red")
+        if not self.voice_commander:
+            messagebox.showwarning("Warning", "Voice Commander not initialized")
+            return
+            
+        if self.voice_commander.is_running:
+            self.voice_commander.stop()
+            self.voice_button.config(text="Start Voice")
+            self.voice_status_indicator.config(foreground="red")
+            self.logger.info("Voice control stopped")
         else:
-            # First time init check
-            if not self.audio_controller.microphone:
-                self.voice_button.config(state="disabled", text="Init...")
-                
-                def init_thread():
-                    ok = self.audio_controller.initialize()
-                    
-                    def on_init_done(success):
-                        self.voice_button.config(state="normal")
-                        if success:
-                            # Set callback
-                            self.audio_controller.callback = self._handle_voice_command
-                            # Start
-                            self.audio_controller.start_listening()
-                            self.voice_button.config(text="Stop Listen")
-                            self.voice_status.config(foreground="green")
-                        else:
-                            messagebox.showerror("Error", "No microphone found")
-                            self.voice_button.config(text="Start Listen")
-                    
-                    self.root.after(0, lambda: on_init_done(ok))
-                    
-                threading.Thread(target=init_thread, daemon=True).start()
+            success = self.voice_commander.start()
+            if success:
+                self.voice_button.config(text="Stop Voice")
+                self.voice_status_indicator.config(foreground="green")
+                self.logger.info("Voice control started")
             else:
-                self.audio_controller.callback = self._handle_voice_command
-                self.audio_controller.start_listening()
-                self.voice_button.config(text="Stop Listen")
-                self.voice_status.config(foreground="green")
+                messagebox.showerror("Error", "Failed to start microphone (SpeechRecognition may be missing)")
 
-    def _handle_voice_command(self, cmd: str) -> None:
-        """Handle incoming voice commands"""
-        def update_ui_cmd(c):
-             # Update label with timestamp
-             ts = time.strftime("%H:%M:%S")
-             self.last_cmd_label.config(text=f"[{ts}] {c}")
-             
-             # Execute logic
-             self.logger.info(f"Voice Command Executed: {c}")
-             
-             if c == "start":
-                 if not self.auto_switching.get():
-                     self.toggle_auto_switching()
-             elif c == "stop":
-                 if self.auto_switching.get():
-                     self.toggle_auto_switching()
+    def handle_voice_command(self, cmd: str) -> None:
+        """Handle incoming voice commands (Public API)"""
+        if not cmd:
+            return
+        # Execute logic in UI thread to be safe
+        self.root.after(0, lambda: self._process_voice_command(cmd))
+    
+    def _process_voice_command(self, cmd: str) -> None:
+        """Internal voice command processing"""
+        self.logger.info(f"Processing Voice Command: {cmd}")
         
-        self.root.after(0, lambda: update_ui_cmd(cmd))
+        cmd_lower = cmd.lower()
+        
+        # 1. System Commands
+        if "start" in cmd_lower or "啟用" in cmd_lower:
+             if not self.auto_switching.get():
+                 self.toggle_auto_switching()
+                 self.logger.info("Voice: Auto Switch Enabled")
+        elif "stop" in cmd_lower or "停用" in cmd_lower:
+             if self.auto_switching.get():
+                 self.toggle_auto_switching()
+                 self.logger.info("Voice: Auto Switch Disabled")
+        elif "snapshot" in cmd_lower or "拍照" in cmd_lower or "截圖" in cmd_lower:
+             self.take_snapshot()
+             self.logger.info("Voice: Snapshot taken")
+        
+        # 2. Scene Switching Commands
+        elif ("switch" in cmd_lower or "切換" in cmd_lower) and hasattr(self, 'available_scenes'):
+            target_scene = None
+            # Sort scenes by length descending to match longest name first (e.g. "Game 2" vs "Game")
+            sorted_scenes = sorted(self.available_scenes, key=len, reverse=True)
+            
+            for scene in sorted_scenes:
+                if scene.lower() in cmd_lower:
+                    target_scene = scene
+                    break
+            
+            if target_scene:
+                self.logger.info(f"Voice: Switching to scene '{target_scene}'")
+                self.current_scene.set(target_scene)
+                
+                if self.obs_connected.get() and self.obs_loop and self.obs_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        self.obs_manager.set_current_program_scene(target_scene), 
+                        self.obs_loop
+                    )
+                else:
+                    self.logger.warning("OBS not connected, cannot switch scene via voice")
 
     def processing_loop(self) -> None:
         """Main processing loop for camera and emotion detection"""
@@ -900,25 +1052,27 @@ class MainPanel:
             
             if result.should_switch and result.recommended_scene:
                 # Switch scene in OBS
-                def switch_scene():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    success = loop.run_until_complete(
-                        self.obs_manager.switch_scene(result.recommended_scene)
-                    )
-                    
-                    if success:
-                        # Update UI
-                        self.root.after(0, lambda: self._update_scene_display(result.recommended_scene))
-                        
-                        # Record switch
-                        self.emotion_mapper.record_scene_switch(
-                            self.current_scene.get(),
-                            result.recommended_scene
-                        )
-                
-                threading.Thread(target=switch_scene, daemon=True).start()
+                def on_switch_complete(future):
+                    try:
+                        success = future.result()
+                        if success:
+                             self.root.after(0, lambda: self._update_scene_display(result.recommended_scene))
+                             # MODIFICATION: Pass the triggering emotion
+                             self.emotion_mapper.record_scene_switch(
+                                 self.current_scene.get(),
+                                 result.recommended_scene,
+                                 emotion=context.emotion
+                             )
+                    except Exception as e:
+                        self.logger.error(f"Auto switch scene failed: {e}")
+
+                if self.obs_loop and self.obs_loop.is_running():
+                     # Use set_current_program_scene instead of non-existent switch_scene
+                     future = asyncio.run_coroutine_threadsafe(
+                         self.obs_manager.set_current_program_scene(result.recommended_scene), 
+                         self.obs_loop
+                     )
+                     future.add_done_callback(on_switch_complete)
                 
         except Exception as e:
             self.logger.error(f"Error in auto switching: {e}")
@@ -1246,31 +1400,55 @@ Features:
                 
                 # Stop Audio
                 if hasattr(self, 'audio_controller'):
-                    self.audio_controller.stop_listening()
+                    try:
+                        self.audio_controller.stop_listening()
+                    except: pass
+
 
                 if self.camera_running.get():
-                    self.stop_camera()
+                    try:
+                        self.stop_camera()
+                    except: pass
+                
+                # Close Camera Manager
+                if hasattr(self, 'camera_manager') and self.camera_manager:
+                    try:
+                         self.camera_manager.stop()
+                    except Exception as e:
+                        self.logger.error(f"Error stopping camera manager: {e}")
                 
                 if self.obs_connected.get():
-                    self.disconnect_obs()
+                    try:
+                        self.disconnect_obs()
+                    except: pass
                 
                 # Save configuration if enabled
-                if self.config.save_layout:
-                    if self.emotion_mapper:
-                        self.emotion_mapper.save_configuration()
+                try:
+                    if self.config.save_layout:
+                        if self.emotion_mapper:
+                            self.emotion_mapper.save_configuration()
+                except: pass
                 
                 # Close windows
-                if self.preview_window:
-                    self.preview_window.close()
+                try:
+                    if self.preview_window:
+                        self.preview_window.close()
+                except: pass
                 
-                if self.settings_dialog:
-                    self.settings_dialog.close()
+                try:
+                    if self.settings_dialog:
+                        self.settings_dialog.close()
+                except: pass
                 
                 self.root.destroy()
+                import sys
+                sys.exit(0)
                 
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
             self.root.destroy()
+            import sys
+            sys.exit(0)
     
     def run(self) -> None:
         """Run the main application"""

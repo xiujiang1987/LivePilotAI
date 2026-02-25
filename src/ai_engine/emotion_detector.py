@@ -1,12 +1,20 @@
 """
 LivePilotAI - 情緒識別核心引擎
 即時人臉情緒分析模組，支援實時情緒檢測與分析
+
+重構後的職責：
+- 臉部偵測 (MediaPipe / Haar Cascade fallback)
+- 情緒模型載入與預測 (TFLite / Keras)
+- 協調 EmotionSmoother 與 AnnotationRenderer
+
+已分離的模組：
+- EmotionSmoother → src/ai_engine/modules/emotion_smoother.py
+- AnnotationRenderer → src/ai_engine/modules/annotation_renderer.py
+- EffectController → src/effects/effect_controller.py
 """
 
 import cv2
 import numpy as np
-# Lazy import tensorflow to improve startup time and allow TFLite usage
-# import tensorflow as tf 
 from typing import Dict, List, Tuple, Optional, Any
 import logging
 import asyncio
@@ -15,6 +23,10 @@ from dataclasses import dataclass
 import time
 import os
 from pathlib import Path
+
+# 拆分後的子模組
+from src.ai_engine.modules.emotion_smoother import EmotionSmoother
+from src.ai_engine.modules.annotation_renderer import AnnotationRenderer
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO)
@@ -65,6 +77,45 @@ class EmotionDetector:
         self.model = None       # Keras Model (Fallback)
         self.model_path = model_path
         self.input_size = (224, 224)
+
+        # MediaPipe 元件
+        try:
+            self.mp_face_detection = mp.solutions.face_detection
+            self.mp_face_mesh = mp.solutions.face_mesh
+        except AttributeError:
+            logger.warning("MediaPipe solutions not available.")
+            self.mp_face_detection = None
+            self.mp_face_mesh = None
+        
+        self.face_detection = None
+        self.face_mesh = None
+        
+        # 初始化 MediaPipe
+        self._initialize_mediapipe()
+
+        # Fallback (Haar Cascade)
+        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        # 參數設置
+        self.confidence_threshold = 0.7
+        self.face_detection_confidence = 0.5
+        
+        # 標記是否使用虛擬模型
+        self.is_dummy = False
+        
+        # 委託給專門的子模組
+        self._smoother = EmotionSmoother(self.emotion_labels)
+        self._renderer = AnnotationRenderer()
+        
+        # 歷史記錄保留屬性以維持向後相容
+        self.emotion_history = self._smoother.emotion_history
+        self.history_size = 5
+        self.stats = {
+            "total_detections": 0,
+            "successful_detections": 0,
+            "processing_times": [],
+            "emotion_counts": {emotion: 0 for emotion in self.emotion_labels}
+        }
         
         # 嘗試載入模型 (優先嘗試 TFLite)
         self._load_model_sync()
@@ -105,7 +156,15 @@ class EmotionDetector:
         try:
             import tensorflow as tf
             if os.path.exists(self.model_path):
-                self.model = tf.keras.models.load_model(self.model_path)
+                self.model = tf.keras.models.load_model(self.model_path, compile=False)
+                # Try to extract input shape
+                if hasattr(self.model, 'input_shape'):
+                    # output usually (None, 64, 64, 1)
+                    shape = self.model.input_shape
+                    if shape and len(shape) >= 3:
+                         self.input_size = (shape[1], shape[2])
+                         logger.info(f"Updated input size from model: {self.input_size}")
+                
                 logger.info(f"載入 Keras 模型: {self.model_path}")
             else:
                 self.model = self._create_default_model(tf)
@@ -131,18 +190,6 @@ class EmotionDetector:
         except Exception as e:
             logger.warning(f"MediaPipe 初始化失敗: {e}")
         return False
-        
-        # 處理參數
-        self.confidence_threshold = 0.7
-        self.face_detection_confidence = 0.5
-        
-        # 性能統計
-        self.stats = {
-            "total_detections": 0,
-            "successful_detections": 0,
-            "processing_times": [],
-            "emotion_counts": {emotion: 0 for emotion in self.emotion_labels}
-        }
     
     async def initialize(self) -> bool:
         """
@@ -182,6 +229,9 @@ class EmotionDetector:
     
     def _create_default_model(self, tf_module=None) -> Any:
         """建立預設的CNN模型架構"""
+        self.is_dummy = True
+        logger.info("Initialize Dummy Model (Will return Neutral emotion by default)")
+        
         if tf_module is None:
             import tensorflow as tf
             tf_module = tf
@@ -225,7 +275,7 @@ class EmotionDetector:
             人臉邊界框列表 [(x, y, w, h), ...]
         """
         # 優先使用 MediaPipe
-        if self.face_detection:
+        if getattr(self, 'face_detection', None):
             try:
                 # MediaPipe 需要 RGB
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -282,8 +332,20 @@ class EmotionDetector:
         else:
             face_gray = face_region
             
-        # 調整大小為48x48
-        face_resized = cv2.resize(face_gray, (48, 48))
+        # 調整大小為 64x64 (mini_XCEPTION 模型要求) (Updated from 48x48)
+        # 如果您的模型是其他尺寸，請修改此處
+        target_size = (64, 64)
+        if hasattr(self, 'input_size') and self.input_size:
+             # 如果模型載入成功，input_size 會在 _load_model_sync 中被更新嗎？
+             # TFLite 會更新，但 Keras load_model 我們需要手動檢查或保留預設
+             # 為了安全，我們這裡直接使用 64x64，因為我們下載了 oarriaga 模型
+             if self.input_size != (48, 48):
+                  target_size = self.input_size
+             else:
+                  # 如果 input_size 還是預設的 48x48，但我們知道下載的是 64x64
+                  target_size = (64, 64)
+
+        face_resized = cv2.resize(face_gray, target_size)
         
         # 正規化像素值
         face_normalized = face_resized / 255.0
@@ -312,9 +374,23 @@ class EmotionDetector:
                 
             # B. 使用 Keras (Fallback)
             elif self.model is not None:
+                if self.is_dummy:
+                    # 虛擬模型：直接返回中性情緒，避免隨機預測造成的干擾
+                    default_probs = {e: 0.02 for e in self.emotion_labels}
+                    if 'neutral' in default_probs:
+                        default_probs['neutral'] = 0.8
+                    # 降低憤怒 (Angry - Index 0) 的機率
+                    if 'angry' in default_probs:
+                        default_probs['angry'] = 0.01
+                    return default_probs
+                    
                 predictions = self.model.predict(face_tensor, verbose=0)
             else:
-                return {e: 0.1 for e in self.emotion_labels}
+                # Default to Neutral if no model available
+                default_probs = {e: 0.05 for e in self.emotion_labels}
+                if 'neutral' in default_probs:
+                    default_probs['neutral'] = 0.55
+                return default_probs
 
             emotion_probs = predictions[0]
             
@@ -329,7 +405,10 @@ class EmotionDetector:
         except Exception as e:
             logger.error(f"情緒預測失敗: {e}")
             # 返回中性情緒作為預設值
-            return {emotion: 0.0 for emotion in self.emotion_labels}
+            default_probs = {e: 0.0 for e in self.emotion_labels}
+            if 'neutral' in default_probs:
+                default_probs['neutral'] = 1.0
+            return default_probs
 
     def predict_emotion_from_image(self, face_image: np.ndarray) -> Dict[str, float]:
         """
@@ -413,34 +492,8 @@ class EmotionDetector:
             return {e: 0.1 for e in self.emotion_labels}
 
     def smooth_emotion(self, current_emotion: Dict[str, float]) -> Dict[str, float]:
-        """
-        使用歷史記錄平滑情緒預測結果
-        
-        Args:
-            current_emotion: 當前情緒預測
-            
-        Returns:
-            平滑後的情緒預測
-        """
-        # 加入當前預測到歷史記錄
-        self.emotion_history.append(current_emotion)
-        
-        # 保持歷史記錄大小
-        if len(self.emotion_history) > self.history_size:
-            self.emotion_history.pop(0)
-        
-        # 計算平均值
-        if len(self.emotion_history) == 1:
-            return current_emotion
-        
-        smoothed_emotion = {}
-        for emotion in self.emotion_labels:
-            avg_confidence = np.mean([
-                hist.get(emotion, 0.0) for hist in self.emotion_history
-            ])
-            smoothed_emotion[emotion] = float(avg_confidence)
-        
-        return smoothed_emotion
+        """委託給 EmotionSmoother (保持向後相容)"""
+        return self._smoother.smooth(current_emotion)
     
     def start(self):
         """啟動檢測器 (兼容性接口)"""
@@ -533,149 +586,36 @@ class EmotionDetector:
         return results
     
     def draw_emotion_info(self, frame: np.ndarray, results: List[Dict]) -> np.ndarray:
-        """
-        在影像上繪製情緒檢測結果
-        
-        Args:
-            frame: 原始影像
-            results: 檢測結果列表
-            
-        Returns:
-            標註後的影像
-        """
-        annotated_frame = frame.copy()
-        
-        for result in results:
-            x, y, w, h = result['bbox']
-            emotion = result['dominant_emotion']
-            confidence = result['confidence']
-            
-            # 繪製人臉邊界框
-            color = (0, 255, 0) if confidence > 0.6 else (0, 255, 255)
-            cv2.rectangle(annotated_frame, (x, y), (x+w, y+h), color, 2)
-            
-            # 繪製情緒標籤
-            label = f"{emotion}: {confidence:.2f}"
-            cv2.putText(
-                annotated_frame, 
-                label, 
-                (x, y-10), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.5, 
-                color, 
-                2
-            )
-        
-        return annotated_frame
+        """委託給 AnnotationRenderer (保持向後相容)"""
+        return self._renderer.draw_results(frame, results)
 
 
-class EffectController:
-    """
-    基於情緒的特效控制器
-    根據檢測到的情緒調整視覺特效參數
-    """
-    
-    def __init__(self):
-        """初始化特效控制器"""
-        # 情緒到特效的映射
-        self.emotion_effects = {
-            'Happy': {
-                'particles': 'sparkles',
-                'color_shift': (1.2, 1.1, 0.9),  # 暖色調
-                'brightness': 1.15,
-                'saturation': 1.2
-            },
-            'Sad': {
-                'particles': 'rain',
-                'color_shift': (0.8, 0.9, 1.2),  # 冷色調  
-                'brightness': 0.85,
-                'saturation': 0.7
-            },
-            'Angry': {
-                'particles': 'fire',
-                'color_shift': (1.3, 0.8, 0.7),  # 紅色調
-                'brightness': 1.1,
-                'saturation': 1.4
-            },
-            'Surprise': {
-                'particles': 'stars',
-                'color_shift': (1.1, 1.1, 1.3),  # 亮色調
-                'brightness': 1.3,
-                'saturation': 1.1
-            },
-            'Neutral': {
-                'particles': None,
-                'color_shift': (1.0, 1.0, 1.0),  # 原色
-                'brightness': 1.0,
-                'saturation': 1.0
-            }
-        }
-    
-    def get_effect_params(self, emotion_results: List[Dict]) -> Dict:
-        """
-        根據情緒檢測結果生成特效參數
-        
-        Args:
-            emotion_results: 情緒檢測結果
-            
-        Returns:
-            特效參數字典
-        """
-        if not emotion_results:
-            return self.emotion_effects['Neutral']
-        
-        # 使用置信度最高的情緒
-        best_result = max(emotion_results, key=lambda x: x['confidence'])
-        dominant_emotion = best_result['dominant_emotion']
-        
-        # 獲取對應的特效參數
-        effect_params = self.emotion_effects.get(
-            dominant_emotion, 
-            self.emotion_effects['Neutral']
-        ).copy()
-        
-        # 根據置信度調整強度
-        confidence = best_result['confidence']
-        effect_params['intensity'] = confidence
-        
-        return effect_params
+# 向後相容：EffectController 已搬遷至 src/effects/effect_controller.py
+# 保留 import 以避免破壞現有程式碼
+try:
+    from src.effects.effect_controller import EffectController
+except ImportError:
+    pass
 
 
-# 使用範例
 if __name__ == "__main__":
-    # 初始化檢測器
+    from src.effects.effect_controller import EffectController
+
     detector = EmotionDetector()
     effect_controller = EffectController()
-    
-    # 開啟攝影機
+
     cap = cv2.VideoCapture(0)
-    
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        
-        # 檢測情緒
         results = detector.detect_emotion(frame)
-        
-        # 繪製檢測結果
         annotated_frame = detector.draw_emotion_info(frame, results)
-        
-        # 獲取特效參數
         effect_params = effect_controller.get_effect_params(results)
-        
-        # 顯示結果
         cv2.imshow('LivePilotAI - Emotion Detection', annotated_frame)
-        
-        # 印出特效參數 (實際應用中會傳送給OBS)
         if results:
-            print(f"檢測到情緒: {results[0]['dominant_emotion']} "
-                  f"({results[0]['confidence']:.2f})")
-            print(f"特效參數: {effect_params}")
-        
-        # 按 'q' 退出
+            print(f"情緒: {results[0]['dominant_emotion']} ({results[0]['confidence']:.2f})")
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    
     cap.release()
     cv2.destroyAllWindows()

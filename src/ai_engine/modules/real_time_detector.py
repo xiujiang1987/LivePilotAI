@@ -68,13 +68,15 @@ class RealTimeEmotionDetector:
     5. 性能監控
     """
     
-    def __init__(self, config: Optional[RealTimeConfig] = None):
+    def __init__(self, config: Optional[RealTimeConfig] = None, 
+                 emotion_detector: Optional[EmotionDetector] = None,
+                 camera_manager: Optional[CameraManager] = None):
         self.config = config or RealTimeConfig()
         
-        # 初始化組件
-        self.camera_manager = CameraManager(self.config.camera_config)
+        # 初始化組件 - 支援依賴注入
+        self.camera_manager = camera_manager or CameraManager(self.config.camera_config)
         self.face_detector = FaceDetector(self.config.detection_config)
-        self.emotion_detector = EmotionDetector(self.config.emotion_model_path)
+        self.emotion_detector = emotion_detector or EmotionDetector(self.config.emotion_model_path)
         
         # Day 5 新增組件
         self.face_tracker = FaceTracker()

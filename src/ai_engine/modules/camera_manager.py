@@ -118,8 +118,8 @@ class CameraManager:
                 
         return self.start_real_time_capture()
     
-    def stop_camera(self):
-        """停止攝像頭 - 為兼容性提供"""
+    def stop(self):
+        """停止攝像頭"""
         self.stop_real_time_capture()
     
     def start_real_time_capture(self, callback: Optional[Callable] = None) -> bool:

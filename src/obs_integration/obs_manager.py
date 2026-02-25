@@ -221,6 +221,41 @@ class OBSWebSocketManager:
             # 清理請求處理器
             self.request_handlers.pop(request_id, None)
     
+    async def get_scene_list(self) -> List[str]:
+        """
+        獲取場景列表
+        
+        Returns:
+            List[str]: 場景名稱列表
+        """
+        try:
+            response = await self.send_request("GetSceneList")
+            # OBS WebSocket v5 structure: d.responseData.scenes
+            data = response.get("responseData", {})
+            scenes = data.get("scenes", [])
+            # 反轉列表因為 OBS 返回的順序通常是倒序的
+            return [scene.get("sceneName") for scene in reversed(scenes)]
+        except Exception as e:
+            logger.error(f"獲取場景列表失敗: {e}")
+            return []
+
+    async def set_current_program_scene(self, scene_name: str) -> bool:
+        """
+        設置當前場景
+        
+        Args:
+            scene_name: 場景名稱
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            await self.send_request("SetCurrentProgramScene", {"sceneName": scene_name})
+            return True
+        except Exception as e:
+            logger.error(f"切換場景失敗: {e}")
+            return False
+
     def on_event(self, event_type: str, handler: Callable):
         """
         註冊事件處理器

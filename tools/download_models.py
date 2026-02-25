@@ -9,7 +9,8 @@ def download_models():
     
     models = {
         'opencv_face_detector.pbtxt': 'https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/opencv_face_detector.pbtxt',
-        'opencv_face_detector_uint8.pb': 'https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/opencv_face_detector_uint8.pb'
+        # Corrected URL for the uint8.pb model (using specific commit hash or reliable mirror)
+        'opencv_face_detector_uint8.pb': 'https://github.com/opencv/opencv_3rdparty/raw/19512576c112aa2c7b6328cb0e8d589a4a90a26d/opencv_face_detector_uint8.pb'
     }
     
     print(f"Checking models in {models_dir}...")

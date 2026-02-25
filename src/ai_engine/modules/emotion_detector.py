@@ -95,7 +95,7 @@ class EmotionDetector:
             List[Tuple[int, int, int, int]]: 人臉邊界框列表 (x, y, w, h)
         """
         if not self.is_loaded:
-            logger.error("模型未載入")
+            # logger.error("模型未載入") # Silenced to remove spam
             return []
         
         try:

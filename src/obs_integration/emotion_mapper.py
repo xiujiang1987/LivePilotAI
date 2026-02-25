@@ -90,7 +90,8 @@ class EmotionMapper:
         
         # State tracking
         self.current_scene: Optional[str] = None
-        self.last_switch_time: float = 0.0
+        self.last_global_switch_time: float = 0.0
+        self.last_emotion_switch_times: Dict[str, float] = {}
         self.emotion_history: List[EmotionContext] = []
         self.switch_history: List[Tuple[str, str, float]] = []  # (from, to, timestamp)
         
@@ -335,7 +336,7 @@ class EmotionMapper:
             
             # Check global cooldown
             current_time = time.time()
-            if current_time - self.last_switch_time < self.global_cooldown:
+            if current_time - self.last_global_switch_time < self.global_cooldown:
                 return MappingResult(
                     recommended_scene=mapping.scene_name,
                     confidence=context.confidence,
@@ -345,7 +346,8 @@ class EmotionMapper:
                 )
             
             # Check emotion-specific cooldown
-            if current_time - self.last_switch_time < mapping.cooldown_period:
+            last_emotion_switch_time = self.last_emotion_switch_times.get(context.emotion, 0.0)
+            if current_time - last_emotion_switch_time < mapping.cooldown_period:
                 return MappingResult(
                     recommended_scene=mapping.scene_name,
                     confidence=context.confidence,
@@ -502,35 +504,47 @@ class EmotionMapper:
     def _generate_reasoning(self, mapping: EmotionMapping, context: EmotionContext, should_switch: bool) -> str:
         """Generate human-readable reasoning for the mapping decision"""
         base_reason = f"Emotion '{context.emotion}' detected with {context.confidence:.2f} confidence"
-        
+
         if not should_switch:
             if context.confidence < mapping.confidence_threshold:
                 return f"{base_reason}, below threshold {mapping.confidence_threshold:.2f}"
-            
+
             sustained_duration = self._get_sustained_duration(context.emotion)
             if sustained_duration < mapping.sustained_duration:
                 return f"{base_reason}, need {mapping.sustained_duration:.1f}s sustained (current: {sustained_duration:.1f}s)"
-            
-            return f"{base_reason}, but cooldown period active"
-        
+
+            # MODIFICATION: Provide more accurate reasoning
+            current_time = time.time()
+            if current_time - self.last_global_switch_time < self.global_cooldown:
+                return f"{base_reason}, but global cooldown is active"
+
+            last_emotion_switch_time = self.last_emotion_switch_times.get(context.emotion, 0.0)
+            if current_time - last_emotion_switch_time < mapping.cooldown_period:
+                return f"{base_reason}, but cooldown for '{context.emotion}' is active"
+
+            return f"{base_reason}, but other conditions not met"
+
         return f"{base_reason}, recommending '{mapping.scene_name}' (priority {mapping.priority})"
-    
-    def record_scene_switch(self, from_scene: Optional[str], to_scene: str) -> None:
+
+    # MODIFICATION: Update signature to accept emotion
+    def record_scene_switch(self, from_scene: Optional[str], to_scene: str, emotion: Optional[str] = None) -> None:
         """Record a scene switch for learning and statistics"""
         current_time = time.time()
-        
+
         # Update switch history
         self.switch_history.append((from_scene or "unknown", to_scene, current_time))
-        
+
         # Maintain history size
         if len(self.switch_history) > self.max_history_size:
             self.switch_history = self.switch_history[-self.max_history_size:]
-        
+
         # Update internal state
         self.current_scene = to_scene
-        self.last_switch_time = current_time
-        
-        self.logger.info(f"Recorded scene switch: {from_scene} -> {to_scene}")
+        self.last_global_switch_time = current_time # Update global timer
+        if emotion:
+            self.last_emotion_switch_times[emotion] = current_time # Update per-emotion timer
+
+        self.logger.info(f"Recorded scene switch: {from_scene} -> {to_scene} (triggered by {emotion or 'N/A'})")
     
     def learn_from_feedback(self, emotion: str, scene: str, satisfaction: float) -> None:
         """Learn from user feedback to improve future mappings"""
@@ -569,7 +583,8 @@ class EmotionMapper:
             'total_switches': len(self.switch_history),
             'emotion_history_size': len(self.emotion_history),
             'current_scene': self.current_scene,
-            'last_switch_time': self.last_switch_time,
+            'last_global_switch_time': self.last_global_switch_time, # MODIFICATION
+            'last_emotion_switch_times': self.last_emotion_switch_times, # NEW
             'user_preferences': dict(self.user_preferences),
             'scene_performance': dict(self.scene_performance),
             'mapping_details': {
@@ -583,16 +598,17 @@ class EmotionMapper:
                 for emotion, mapping in self.mappings.items()
             }
         }
-    
+
     def reset_learning_data(self) -> None:
         """Reset all learned data and preferences"""
         self.user_preferences.clear()
         self.scene_performance.clear()
         self.emotion_history.clear()
         self.switch_history.clear()
-        self.last_switch_time = 0.0
+        self.last_global_switch_time = 0.0 # MODIFICATION
+        self.last_emotion_switch_times.clear() # NEW
         self.current_scene = None
-        
+
         self.logger.info("Reset all learning data and preferences")
     
     def add_mapping_callback(self, callback: Callable[[MappingResult], None]) -> None:

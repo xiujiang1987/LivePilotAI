@@ -126,9 +126,20 @@ class ConfigManager:
         
         if config_path.exists():
             try:
+                # Fix for python/tuple in yaml
+                try:
+                    yaml.SafeLoader.add_constructor("tag:yaml.org,2002:python/tuple", lambda loader, node: tuple(loader.construct_sequence(node)))
+                except ImportError:
+                    pass
+
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_data = yaml.safe_load(f)
                     
+                # Post-process config data to convert lists to tuples where expected
+                if 'ai_models' in config_data and 'input_size' in config_data['ai_models']:
+                    if isinstance(config_data['ai_models']['input_size'], list):
+                        config_data['ai_models']['input_size'] = tuple(config_data['ai_models']['input_size'])
+
                 self._config = self._create_config_from_dict(config_data)
                 self.logger.info(f"成功載入配置文件: {config_path}")
                 

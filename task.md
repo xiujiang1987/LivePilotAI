@@ -7,6 +7,9 @@
 <!-- Empty -->
 
 ## Done
+- [x] **Security Hardening**: Switched to `yaml.safe_load` and fixed Tuple serialization vulnerability in ConfigManager <!-- id: 10 -->
+- [x] **UX Improvement**: Added Splash Screen to mask TensorFlow loading time <!-- id: 11 -->
+- [x] **Code Fix**: Resolved circular import/attribute error in `main.py` entry point <!-- id: 12 -->
 - [x] **Model Optimization**: Removed heavy dependencies (TensorFlow, Torch) and updated spec with exclusions <!-- id: 9 -->
 - [x] **Keyword Spotting**: Implement voice command triggers (e.g., "Clip That", "Be Right Back") for hands-free control <!-- id: 8 -->
 - [x] **Neural Style Transfer**: Add real-time artistic video filters (Van Gogh, Sketch styles) using TensorFlow Hub models <!-- id: 7 -->

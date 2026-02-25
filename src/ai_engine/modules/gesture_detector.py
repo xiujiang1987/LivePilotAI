@@ -19,13 +19,24 @@ class GestureDetector:
     """
     
     def __init__(self, min_detection_confidence=0.7, min_tracking_confidence=0.5):
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence
-        )
+        try:
+            if not hasattr(mp, 'solutions'):
+                logger.warning("MediaPipe solutions not found. Gesture detection disabled.")
+                self.hands = None
+                return
+                
+            self.mp_hands = mp.solutions.hands
+            self.hands = self.mp_hands.Hands(
+                static_image_mode=False,
+                max_num_hands=2,
+                min_detection_confidence=min_detection_confidence,
+                min_tracking_confidence=min_tracking_confidence
+            )
+            logger.info("GestureDetector initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize MediaPipe Hands: {e}")
+            self.hands = None
+        
         # 手指尖端索引
         self.tip_ids = [4, 8, 12, 16, 20]
         
@@ -45,6 +56,9 @@ class GestureDetector:
                 'landmarks': list    # 關鍵點
             }
         """
+        if self.hands is None:
+            return []
+            
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.hands.process(frame_rgb)
         
